@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Fully offline (design offline.network): no internet permission. Hand tracking needs no manifest permission
+         in SDK 6.1 (the provider reports WITHOUT_PERMISSION if the system denies it; S03b). -->
+
+    <application
+        android:name=".platform.SpatialApplication"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.SignHands"
+        tools:targetApi="31">
+
+        <activity
+            android:name=".platform.LaunchActivity"
+            android:exported="true"
+            android:theme="@style/Theme.SignHands">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- One Mixed Stage (Full Space, passthrough): hand joints are only reported in Full Space.
+                 Style values: 0 Automatic, 1 Mixed, 2 Progressive, 3 Full (SDK 6.1 declare-a-stage). -->
+            <meta-data android:name="pico.spatial.stage.id" android:value="SignStage" />
+            <meta-data android:name="pico.spatial.stage.style" android:value="1" />
+        </activity>
+
+        <!-- QA hook: switches the app to any named state over adb (see AGENTS.md). Only acts in debuggable builds. -->
+        <receiver
+            android:name=".debug.DebugCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.embodit.signhands.DEBUG" />
+            </intent-filter>
+        </receiver>
+
+        <meta-data android:name="icon.3d.list" android:resource="@array/icon_3d_list" />
+        <meta-data android:name="icon.sdf.list" android:resource="@array/icon_sdf_list" />
+    </application>
+
+</manifest>
