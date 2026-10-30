@@ -222,8 +222,10 @@ private fun HandNeeded(state: UiState, vm: SignViewModel, c: Copy) {
 
 @Composable
 private fun TrackingOff(state: UiState, vm: SignViewModel, c: Copy) {
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(if (state.variant == "b") c.trackingOffB else c.trackingOffA, style = PicoTheme.typography.bodyLargeMultiline, maxLines = 3)
+        Text(c.trackingStatus(state.support), style = PicoTheme.typography.bodyMedium, color = SignColors.Alert, maxLines = 2)
+        Small(c.demoHint)
         Spacer(modifier = Modifier.weight(1f))
         ButtonsRow {
             PrimaryButton(c.checkAgain, { vm.recheck(io.embodit.signhands.platform.SignGraph.hands.support()) })
@@ -240,6 +242,7 @@ private fun Home(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
     val next = (1..6).firstOrNull { state.progress.lessons[it]?.done != true } ?: 0
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (state.watchOnly) {
+            Small(c.trackingStatus(state.support))
             Button(onClick = { vm.recheck(io.embodit.signhands.platform.SignGraph.hands.support()) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary)) {
                 Text(c.watchOnlyBanner, maxLines = 1)
             }

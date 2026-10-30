@@ -404,6 +404,55 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
 
     private fun headPosOf(p: io.embodit.signhands.platform.HeadPose): V3 = p.position
 
+    private var firstPoseMs = -1L
+    private var stationAuto = true
+
+    /**
+     * v0.1.2 (headset: "打开什么都没有"): the panel is placed from the head only once the head pose is real, keeps being
+     * re-placed in front of the head for the first STATION_SETTLE_MS, then locks (D21). Until the user has moved it, a
+     * panel that ends up far away or out of view (> 70 degrees) is put back in front once.
+     */
+    private fun settleStation(headPos: V3, headYaw: Float, handed: Handed) {
+        val now = SystemClock.elapsedRealtime()
+        if (firstPoseMs < 0) firstPoseMs = now
+        if (!stationSet || (stationAuto && now - firstPoseMs < STATION_SETTLE_MS)) {
+            placeStation(headPos, headYaw, handed)
+            return
+        }
+        if (stationAuto) {
+            val d = stationPos - headPos
+            val off = abs(wrap180(yawOf(V3(d.x, 0f, d.z)) - headYaw))
+            if (d.length > 3f || d.length < 0.3f || off > 70f) {
+                placeStation(headPos, headYaw, handed)
+                SignLog.i("PANEL re-placed: was dist=${"%.2f".format(d.length)} off=${off.toInt()}")
+            }
+            stationAuto = false
+        }
+    }
+
+    private val diagAt = longArrayOf(1000L, 3000L, 5000L)
+    private var diagNext = 0
+
+    /** v0.1.2 diagnostics: 1 / 3 / 5 s after attach, where the panel and the hands are relative to the head. */
+    private fun diagnostics(now: Long, headPos: V3, headYaw: Float, s: UiState) {
+        if (diagNext >= diagAt.size || now - attachMs < diagAt[diagNext]) return
+        fun rel(p: V3): String {
+            val d = p - headPos
+            val dir = wrap180(yawOf(V3(d.x, 0f, d.z)) - headYaw)
+            val elev = Math.toDegrees(kotlin.math.atan2(d.y.toDouble(), kotlin.math.sqrt((d.x * d.x + d.z * d.z).toDouble()))).toInt()
+            return "${fmt(p)} dist=${"%.2f".format(d.length)} dir=${dir.toInt()} elev=$elev"
+        }
+        val lessonShown = slots[PanelIds.LESSON]?.shown
+        val g = ghost[s.settings.hand]
+        val w = watch[s.settings.hand]
+        SignLog.i(
+            "DIAG t=${diagAt[diagNext] / 1000}s state=${s.screen}/${s.variant} head=${fmt(headPos)} yaw=${headYaw.toInt()} support=${hands.support()} " +
+                "| panel ${rel(stationPos)} shown=$lessonShown bound=${slots[PanelIds.LESSON]?.panel != null} composed=${panelShown[PanelIds.LESSON]} " +
+                "| watch visible=${w?.visible} at ${w?.let { rel(watchCentre()) }} | ghost visible=${g?.visible} | models=${ghost.keys}/${watch.keys}"
+        )
+        diagNext++
+    }
+
     private fun fmt(v: V3) = "(%.2f,%.2f,%.2f)".format(v.x, v.y, v.z)
 
     /** The demo hand stands to the panel's dominant side, a little closer to the user. */
@@ -468,6 +517,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             reportedVisible = visible
             vm.handVisible(visible)
         }
+        vm.support(support)
         val supportOk = support == Support.OK || support == Support.EMULATOR
         if (supportWasOk && !supportOk && s.screen != Screen.S00) vm.supportLost()
         supportWasOk = supportOk
@@ -493,6 +543,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             lastWrist = null
         }
 
+        diagnostics(now, headPos, pose.yaw, s)
         judgeFrame(s, features, now)
         val letter = s.letter?.let { book.letters[it] }
         updateGhost(s, letter, joints, frameOfHand, practice, headPractice, handed, dt, now)
@@ -668,7 +719,9 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val other = if (handed == Handed.RIGHT) Handed.LEFT else Handed.RIGHT
         watch[other]?.setVisible(false)
         val view = watch[handed]
-        val shown = s.screen == Screen.S05 && letter != null && view != null
+        val demo = s.screen == Screen.S03
+        val shownLetter = if (demo) book[DEMO_LETTERS[((SystemClock.elapsedRealtime() / DEMO_MS) % DEMO_LETTERS.size).toInt()]] else letter
+        val shown = (s.screen == Screen.S05 || demo) && shownLetter != null && view != null
         if (!shown) {
             view?.setVisible(false)
             ring?.setVisible(false)
@@ -677,7 +730,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             watchKey = ""
             return
         }
-        val l = letter!!
+        val l = shownLetter!!
         val key = "${l.l}:${s.enteredMs}:${s.course?.index}"
         if (key != watchKey || s.replay != lastReplay) {
             if (key != watchKey) {
@@ -771,7 +824,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
 
     private fun updatePanels(s: UiState, headYaw: Float, headPos: V3, joints: List<V3>?, practice: PracticeFrame, handed: Handed, dt: Float) {
         // lesson panel (D21): placed once in front of you, then fixed in the world; moves only by its bar or "Bring here"
-        if (!stationSet) placeStation(headPos, headYaw, handed)
+        settleStation(headPos, headYaw, handed)
         val pRot = Q4.yaw(stationYaw)
         slots[PanelIds.LESSON]?.place(stationPos, pRot)
         panelHandle?.setLocal(position = stationPos + V3(0f, -PANEL_HALF_H - 0.03f, 0f), rotation = pRot)
@@ -834,6 +887,9 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         const val TICK_MS = 100L
         const val HINT_MS = 100L
         const val STATION_DIST = 0.9f
+        const val STATION_SETTLE_MS = 2000L
+        const val DEMO_MS = 4000L
+        private val DEMO_LETTERS = listOf("A", "B", "C", "D", "L", "Y")
         const val STATION_DOWN_DEG = 15f
         const val STATION_SIDE_DEG = 14f
         const val PANEL_HALF_H = 0.2f

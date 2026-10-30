@@ -31,6 +31,15 @@ class Copy(val lang: Lang) {
     val backHome get() = t("回主页", "Home")
     val trackingOffA get() = t("需要用手：在系统设置里打开手势追踪；拿着手柄的话先放下", "This needs your hands: turn on hand tracking in system settings, and put the controllers down")
     val trackingOffB get() = t("需要手势追踪权限", "Hand tracking permission is needed")
+    fun trackingStatus(s: io.embodit.signhands.domain.Support) =
+        when (s) {
+            io.embodit.signhands.domain.Support.OK -> t("手势追踪：已就绪", "Hand tracking: ready")
+            io.embodit.signhands.domain.Support.EMULATOR -> t("手势追踪：模拟器（调试手）", "Hand tracking: emulator (debug hand)")
+            io.embodit.signhands.domain.Support.WAIT -> t("手势追踪：启动中…", "Hand tracking: starting…")
+            io.embodit.signhands.domain.Support.NO_PERMISSION -> t("手势追踪：没有权限", "Hand tracking: no permission")
+            io.embodit.signhands.domain.Support.OFF -> t("手势追踪：不可用（放下手柄，或在设置里打开）", "Hand tracking: off (put the controllers down or turn it on)")
+        }
+    val demoHint get() = t("右边的大手在示范；可以先只看示范", "The big hand beside this panel is demonstrating; you can just watch")
     val checkAgain get() = t("再检查一次", "Check again")
     val watchOnly get() = t("先只看示范", "Just watch for now")
     val watchOnlyBanner get() = t("手势追踪可用了？再检查一次", "Hand tracking on? Check again")

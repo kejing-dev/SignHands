@@ -55,6 +55,11 @@ class HeadTracker {
         val rotation = pose.rotation
         val sample = HeadPose(V3(position.x, position.y, position.z), Q4(rotation.x, rotation.y, rotation.z, rotation.w))
         if (!sample.position.isFinite()) return last
+        // v0.1.2: before tracking settles the HMD reports an all-zero pose (or a zero quaternion); content placed from it
+        // landed at the Stage origin (floor level) and stayed there once the panel stopped following the head
+        val q = sample.rotation
+        val qLen = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w
+        if (qLen < 0.5f || !qLen.isFinite() || (sample.position.length < 1e-4f && q.w > 0.99999f)) return last
         last = sample
         lastValidMs = SystemClock.elapsedRealtime()
         return sample

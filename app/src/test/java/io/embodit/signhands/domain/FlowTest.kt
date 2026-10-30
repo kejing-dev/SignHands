@@ -52,6 +52,19 @@ class FlowTest {
     }
 
     @Test
+    fun trackingComingBackLeavesS03() {
+        val f = Flow(book)
+        f.loaded(Settings(), Progress())
+        f.ready(0, Support.OFF)
+        assertEquals(Screen.S03, f.state.screen)
+        f.support(Support.OFF, 0)
+        assertEquals(Screen.S03, f.state.screen)
+        f.support(Support.OK, 100)
+        assertEquals(Screen.S04, f.state.screen)
+        assertEquals(Support.OK, f.state.support)
+    }
+
+    @Test
     fun lessonOneWithQuizAndReview() {
         val f = flow(first = false)
         f.handVisible(true, now)

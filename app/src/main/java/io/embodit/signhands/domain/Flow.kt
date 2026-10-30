@@ -93,6 +93,8 @@ data class UiState(
     /** Debug `hold=1`: the next short state does not move on by itself. */
     val hold: Boolean = false,
     val spikeLetter: String = "A",
+    /** v0.1.2: hand tracking as last seen by the scene, shown on the panel. */
+    val support: Support = Support.WAIT,
 ) {
     val inFollow: Boolean
         get() = screen == Screen.S06 || screen == Screen.S07 || screen == Screen.S08
@@ -452,6 +454,13 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     fun watchOnly(now: Long) {
         set(state.copy(watchOnly = true))
         go(if (state.firstRun) Screen.S01 else Screen.S04, now)
+    }
+
+    /** The scene's support state changed; leaving S03 by itself when tracking becomes usable. */
+    fun support(sup: Support, now: Long) {
+        if (sup == state.support) return
+        set(state.copy(support = sup))
+        if (state.screen == Screen.S03 && (sup == Support.OK || sup == Support.EMULATOR)) recheck(sup, now)
     }
 
     fun hint(key: String?) {

@@ -83,6 +83,11 @@ class SignViewModel(application: Application) : AndroidViewModel(application) {
 
     fun supportLost() = act { supportLost(now()) }
 
+    fun support(sup: Support) {
+        if (sup == flow.state.support) return
+        act { support(sup, now()) }
+    }
+
     fun hint(key: String?) {
         if (key == flow.state.hint) return
         act { hint(key) }
