@@ -78,11 +78,11 @@ class FlowTest {
             assertEquals(Screen.S07, f.state.screen)
             f.wait(1000)
         }
-        // E is a self-check letter
+        // v0.1.3: E is judged too (it was a self-check letter); "Next ›" moves on without a match
         assertEquals("E", f.state.letter)
         f.tryIt(now)
-        assertEquals(Screen.S08, f.state.screen)
-        f.selfDone(now)
+        assertEquals(Screen.S06, f.state.screen)
+        f.nextLetter(now)
         assertEquals(Screen.S09, f.state.screen)
         assertEquals(5, f.state.quiz!!.items.size)
         var wrongOnce = false

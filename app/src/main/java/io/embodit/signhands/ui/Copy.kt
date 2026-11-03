@@ -49,6 +49,18 @@ class Copy(val lang: Lang) {
     fun lesson(n: Int) = t("第 $n 课", "Lesson $n")
     val spellWords get() = t("拼词", "Spell words")
     val alphabet get() = t("字母表", "Alphabet")
+    val words get() = t("常用词", "Everyday words")
+    fun wordsTitle(th: io.embodit.signhands.domain.Theme) = t("常用词 · ${th.zh}", "Words · ${th.en}")
+    fun signTitle(s: io.embodit.signhands.domain.Sign) = t("${s.zh} · ${s.en}", s.en)
+    fun wordCount(n: Int) = t("$n 个词", "$n words")
+    val wordsNote get() = t("点一个词：先看示范，再跟着做", "Pick a word: watch it, then do it")
+    val signDemoNote get() = t("圆圈是头、横线是肩膀；捏住下面的圆环可以转着看", "The circle is the head, the line the shoulders. Pinch the ring to turn it")
+    val signFit get() = t("照示范在身前做一遍，手型差不多就行", "Do it in front of you like the demo; a rough shape is fine")
+    val moveFit get() = t("摆好手型，照示范在空中画一遍", "Make the shape and draw it in the air like the demo")
+    val exitApp get() = t("退出应用", "Exit app")
+    val exitAsk get() = t("退出手语老师？学习进度已经保存", "Exit Sign Hands? Your progress is saved")
+    val exit get() = t("退出", "Exit")
+    val signShort get() = t("照示范做一遍", "Do it like the demo")
     val settings get() = t("设置", "Settings")
     val mute get() = t("静音", "Mute")
     val unmute get() = t("打开声音", "Sound on")
@@ -113,8 +125,8 @@ class Copy(val lang: Lang) {
     val about get() = t("关于", "About")
     val aboutBody get() =
         t(
-            "这是美国手语 ASL 的手指字母，不是中国手语。\n手模：WebXR Input Profiles generic-hand © 2019 Amazon · MIT",
-            "These are ASL fingerspelling letters.\nHand model: WebXR Input Profiles generic-hand © 2019 Amazon · MIT",
+            "这是美国手语 ASL，不是中国手语。常用词取自入门课的日常词，动作说明为本应用自写、做了简化。\n手模：WebXR Input Profiles generic-hand © 2019 Amazon · MIT",
+            "American Sign Language (ASL). Everyday words are common beginner vocabulary; the movement notes are our own, simplified.\nHand model: WebXR Input Profiles generic-hand © 2019 Amazon · MIT",
         )
 
     fun version(v: String) = t("版本 $v", "Version $v")
@@ -137,6 +149,8 @@ class Copy(val lang: Lang) {
                     "C" -> t("拇指和四指成弧", "Thumb curves like a C")
                     "par" -> t("拇指和食指平行", "Thumb parallel to index")
                     "closed" -> t("拇指收回来", "Fold your thumb in")
+                    "across" -> t("拇指横在手指前面", "Thumb across your fingers")
+                    "tuck" -> t("拇指收到手指下面", "Tuck your thumb under")
                     else -> t("拇指放到老师那里", "Thumb where the teacher's is")
                 }
             "palm" ->
@@ -147,6 +161,17 @@ class Copy(val lang: Lang) {
                     else -> t("手掌转向下面", "Turn your palm down")
                 }
             "point" -> t("食指横着指向一边", "Point your index sideways")
+            "move" -> if (p[1] == "bigger") t("动作再大一点", "Make the move bigger") else t("照示范的路线做一遍", "Follow the demo's path")
+            "place" ->
+                when (p[1]) {
+                    "higher" -> t("手再高一点", "A bit higher")
+                    "lower" -> t("手再低一点", "A bit lower")
+                    "closer" -> t("离身体近一点", "Closer to your body")
+                    "out" -> t("往前伸一点", "A bit further out")
+                    "in" -> t("往中间一点", "More to the middle")
+                    else -> t("往外侧一点", "More to the side")
+                }
+            "loosen" -> t("放宽了一点，再来", "Made it easier, try again")
             else -> null
         }
     }
@@ -160,6 +185,8 @@ class Copy(val lang: Lang) {
             "thumb" -> t("拇指", "thumb")
             "palm", "point" -> t("手掌朝向", "palm direction")
             "spread" -> t("手指张开", "finger spread")
+            "move" -> t("动作路线", "the move")
+            "place" -> t("位置", "where")
             else -> null
         }
     }

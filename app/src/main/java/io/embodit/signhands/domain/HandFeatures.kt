@@ -136,6 +136,21 @@ object HandMath {
     fun place(local: List<V3>, handed: Handed, wrist: V3, rotation: Q4, scale: Float = 1f): List<V3> =
         local.map { p -> wrist + rotation.rotate((if (handed == Handed.LEFT) p.mirrorX() else p) * scale) }
 
+    /**
+     * v0.1.3: the point a moving target follows (palm centre, index or pinky tip) in [frame] (the head frame: origin at the
+     * head, smoothed head heading), in right-hand terms (mirrored for a left hand).
+     */
+    fun trackPoint(joints: List<V3>, track: Track, frame: PracticeFrame, handed: Handed): V3 {
+        val p =
+            when (track) {
+                Track.PALM -> (joints[J.WRIST] + joints[J.prox(1)]) * 0.5f
+                Track.INDEX_TIP -> joints[J.tip(0)]
+                Track.PINKY_TIP -> joints[J.tip(3)]
+            }
+        val local = frame.toLocal(p - frame.origin)
+        return if (handed == Handed.LEFT) local.mirrorX() else local
+    }
+
     /** A right-hand orientation (practice frame) as the dominant hand's: mirrored for a left hand. */
     fun handedOrient(orient: Q4, handed: Handed): Q4 = if (handed == Handed.RIGHT) orient else Q4(orient.x, -orient.y, -orient.z, orient.w)
 }

@@ -1,6 +1,13 @@
 package io.embodit.signhands.ui
 
+import android.app.Activity
+import android.app.ActivityManager
 import android.app.Application
+import android.content.Context
+import android.content.ContextWrapper
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -59,11 +66,13 @@ fun SignScreen() {
         DebugHost.vm = vm
         DebugHost.scene = scene
         vm.onRecall = { scene.recall() }
+        vm.onExit = { exitApp(context, scene) }
         SignLog.i("STAGE enter")
         onDispose {
             DebugHost.vm = null
             DebugHost.scene = null
             vm.onRecall = null
+            vm.onExit = null
             unregisterSystem<SignFrameSystem>()
             scene.detach()
             SignLog.i("STAGE disposed")
@@ -117,6 +126,23 @@ private fun Gate(scene: SignScene, id: String, size: IntSize, content: @Composab
         if (shown) content()
     }
 }
+
+/**
+ * v0.1.3 (profile D26): settings > Exit, confirmed. Tracking and the scene are released first (the hand and head
+ * providers stop, entities and panels go), then every task of the app is finished and removed, then the process ends.
+ */
+private fun exitApp(context: Context, scene: SignScene) {
+    SignLog.i("EXIT confirmed: releasing tracking and the scene")
+    runCatching { scene.detach() }.onFailure { SignLog.e("EXIT detach failed: $it", it) }
+    var activity: Context? = context
+    while (activity is ContextWrapper && activity !is Activity) activity = activity.baseContext
+    runCatching { (activity as? Activity)?.finishAndRemoveTask() }
+    runCatching { context.getSystemService(ActivityManager::class.java)?.appTasks?.forEach { it.finishAndRemoveTask() } }
+    SignLog.i("EXIT tasks finished, ending the process")
+    Handler(Looper.getMainLooper()).postDelayed({ Process.killProcess(Process.myPid()) }, EXIT_DELAY_MS)
+}
+
+private const val EXIT_DELAY_MS = 300L
 
 /** For the debug receiver: the upper-limb mode (Visible by default; SPIKE page / `limbs` command switches it). */
 internal fun limbModeOf(name: String?): UpperLimbRenderMode? = UpperLimbRenderMode.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }

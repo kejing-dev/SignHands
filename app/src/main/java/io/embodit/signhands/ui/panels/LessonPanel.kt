@@ -2,6 +2,7 @@ package io.embodit.signhands.ui.panels
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +47,9 @@ import io.embodit.signhands.domain.LetterBook
 import io.embodit.signhands.domain.Mark
 import io.embodit.signhands.domain.Reveal
 import io.embodit.signhands.domain.Screen
+import io.embodit.signhands.domain.Sign
+import io.embodit.signhands.domain.Signs
+import io.embodit.signhands.domain.Theme
 import io.embodit.signhands.domain.Srs
 import io.embodit.signhands.domain.Support
 import io.embodit.signhands.domain.UiState
@@ -121,6 +126,7 @@ fun LessonPanel(state: UiState, vm: SignViewModel, book: LetterBook, spike: Stri
                     Screen.S13 -> Alphabet(state, vm, c, book)
                     Screen.S14 -> SettingsPage(state, vm, c)
                     Screen.S15 -> Centered(c.cleared)
+                    Screen.S16 -> WordsPage(state, vm, c)
                     Screen.SPIKE -> SpikePage(state, vm, spike, book)
                 }
             }
@@ -159,9 +165,11 @@ private fun title(s: UiState, c: Copy): String {
                 CourseMode.FREE -> c.freeTitle(letter)
                 CourseMode.WORDS -> c.wordTitle(course.step.word ?: "", course.step.posInWord)
                 CourseMode.LESSON -> c.lessonTitle(course.lesson, letter)
+                CourseMode.SIGNS -> s.sign?.let { c.wordsTitle(it.theme) } ?: c.words
             }
         Screen.S09, Screen.S10 -> quizTitle(s, c)
         Screen.S13 -> c.alphabet
+        Screen.S16 -> c.words
         Screen.S14 -> c.settings
         Screen.SPIKE -> "SPIKE"
         else -> c.appName
@@ -258,7 +266,11 @@ private fun Home(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
             }
         }
         Spacer(modifier = Modifier.weight(1f))
-        SecondaryButton(c.alphabet, { vm.openAlphabet() }, Modifier.fillMaxWidth())
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SecondaryButton(c.alphabet, { vm.openAlphabet() }, Modifier.weight(1f))
+            // v0.1.3 (profile B18): everyday word signs
+            PrimaryButton(c.words + " · " + c.wordCount(Signs.all.size), { vm.openWords() }, Modifier.weight(1f))
+        }
     }
 }
 
@@ -279,6 +291,10 @@ private fun LessonCell(n: Int, state: UiState, book: LetterBook, c: Copy, highli
 private fun Dots(state: UiState) {
     val course = state.course ?: return
     if (course.mode == CourseMode.FREE) return
+    if (course.mode == CourseMode.SIGNS) {
+        Text("${course.index + 1} / ${course.steps.size}", style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelSecondary)
+        return
+    }
     val steps = if (course.mode == CourseMode.WORDS) course.steps.filter { it.word == course.step.word } else course.steps
     val currentInList = if (course.mode == CourseMode.WORDS) course.step.posInWord else course.index
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -301,12 +317,30 @@ private fun BigLetter(letter: String, tip: String) {
     }
 }
 
+/** v0.1.3: a word sign's name (English big, Chinese beside) and how it is made. */
+@Composable
+private fun BigWord(sign: Sign, c: Copy) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            FitText(sign.en, PicoTheme.typography.titleLarge.copy(fontSize = 34.sp, fontWeight = FontWeight.SemiBold), PicoTheme.colorScheme.labelPrimary, id = "lesson/word", modifier = Modifier.weight(1f, fill = false))
+            if (!c.en) Text(sign.zh, style = PicoTheme.typography.titleMedium, maxLines = 1)
+        }
+        Text(sign.tip(if (c.en) Lang.EN else Lang.ZH), style = PicoTheme.typography.bodyLargeMultiline, maxLines = 2)
+    }
+}
+
 @Composable
 private fun Watch(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
-    val l = book[state.letter ?: return]
+    val sign = state.sign
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        BigLetter(l.l, l.tip(if (c.en) Lang.EN else Lang.ZH))
-        Small(if (state.opposite) c.oppositeNote else c.dragToTurn)
+        if (sign != null) {
+            BigWord(sign, c)
+            Small(if (state.opposite) c.oppositeNote else c.signDemoNote)
+        } else {
+            val l = book[state.letter ?: return@Column]
+            BigLetter(l.l, l.tip(if (c.en) Lang.EN else Lang.ZH))
+            Small(if (state.opposite) c.oppositeNote else c.dragToTurn)
+        }
         Spacer(modifier = Modifier.weight(1f))
         ButtonsRow {
             SecondaryButton((if (state.slow) "✓ " else "") + c.slow, { vm.toggleSlow() }, selected = state.slow)
@@ -319,8 +353,15 @@ private fun Watch(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) 
 
 @Composable
 private fun Follow(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
+    val sign = state.sign
+    val moving = state.letter?.let { book.letters[it]?.isMotion } == true
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(c.fitHint, style = PicoTheme.typography.bodyLarge, maxLines = 2)
+        if (sign != null) {
+            BigWord(sign, c)
+            Small(c.signFit)
+        } else {
+            Text(if (moving) c.moveFit else c.fitHint, style = PicoTheme.typography.bodyLarge, maxLines = 2)
+        }
         Spacer(modifier = Modifier.weight(1f))
         ButtonsRow {
             SecondaryButton(c.watchAgain, { vm.watchAgain() }, Modifier.weight(1f))
@@ -463,10 +504,70 @@ private fun Alphabet(state: UiState, vm: SignViewModel, c: Copy, book: LetterBoo
     }
 }
 
+// ----------------------------------------------------------------------------------------------- S16
+
+/**
+ * v0.1.3 (profile B18): everyday word signs by theme. "‹ theme ›" pages through the nine themes; each word is a cell
+ * (English, Chinese, ✓ once done) that opens its demo; the theme's words then follow one another.
+ */
+@Composable
+private fun WordsPage(state: UiState, vm: SignViewModel, c: Copy) {
+    val themes = Theme.entries
+    val i = themes.indexOf(state.theme)
+    val words = Signs.inTheme(state.theme)
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            RoundIcon(R.drawable.ic_back, c.back) { vm.setTheme(themes[(i - 1 + themes.size) % themes.size]) }
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(if (c.en) state.theme.en else state.theme.zh, style = PicoTheme.typography.titleMedium, maxLines = 1)
+                Text("${i + 1} / ${themes.size} · ${c.wordCount(words.size)}", style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelSecondary, maxLines = 1)
+            }
+            Box(modifier = Modifier.graphicsLayer(scaleX = -1f)) { RoundIcon(R.drawable.ic_back, c.next) { vm.setTheme(themes[(i + 1) % themes.size]) } }
+        }
+        for (row in words.chunked(3)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (w in row) {
+                    val done = w.key in state.progress.followed
+                    Button(
+                        onClick = { vm.openSign(w.id) },
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary),
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            FitText((if (done) "✓ " else "") + w.en, PicoTheme.typography.labelLarge, SignColors.OnButtonSecondary, id = "lesson/words/${w.id}", align = TextAlign.Center)
+                            if (!c.en) FitText(w.zh, PicoTheme.typography.labelMedium, SignColors.OnButtonSecondary, id = "lesson/words/${w.id}/zh", align = TextAlign.Center)
+                        }
+                    }
+                }
+                repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+            }
+        }
+        if (words.size <= 6) {
+            Spacer(modifier = Modifier.weight(1f))
+            Small(c.wordsNote)
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------------------------- S14
 
 @Composable
 private fun SettingsPage(state: UiState, vm: SignViewModel, c: Copy) {
+    if (state.variant == "exit") {
+        // v0.1.3 (profile D26): exit asks once more
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(c.exitAsk, style = PicoTheme.typography.bodyLargeMultiline, maxLines = 3)
+            Spacer(modifier = Modifier.weight(1f))
+            ButtonsRow {
+                SecondaryButton(c.cancel, { vm.cancelExit() }, Modifier.weight(1f))
+                Button(onClick = { vm.confirmExit() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = SignColors.Coral, contentColor = Color(0xFF2A0B05))) {
+                    Text(c.exit, maxLines = 1)
+                }
+            }
+        }
+        return
+    }
     if (state.variant == "confirm") {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(c.clearAsk, style = PicoTheme.typography.bodyLargeMultiline, maxLines = 3)
@@ -482,6 +583,12 @@ private fun SettingsPage(state: UiState, vm: SignViewModel, c: Copy) {
     }
     val s = state.settings
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.aboutOpen) {
+            Text(c.version(vm.version) + "\n" + c.aboutBody, style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelSecondary, maxLines = 6, modifier = Modifier.weight(1f))
+            ButtonsRow { SecondaryButton(c.about, { vm.toggleAbout() }, Modifier.weight(1f), selected = true) }
+            SecondaryButton(c.exitApp, { vm.askExit() }, Modifier.fillMaxWidth())
+            return@Column
+        }
         SettingRow(c.language) {
             SegmentControl {
             for (l in Lang.entries) {
@@ -506,12 +613,12 @@ private fun SettingsPage(state: UiState, vm: SignViewModel, c: Copy) {
             }
         }
         ButtonsRow {
-            SecondaryButton(c.clearProgress, { vm.askClear() })
-            SecondaryButton(c.about, { vm.toggleAbout() }, selected = state.aboutOpen)
+            SecondaryButton(c.clearProgress, { vm.askClear() }, Modifier.weight(1f))
+            SecondaryButton(c.about, { vm.toggleAbout() }, Modifier.weight(1f), selected = state.aboutOpen)
         }
-        if (state.aboutOpen) {
-            Text(c.version(vm.version) + "\n" + c.aboutBody, style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelSecondary, maxLines = 4)
-        }
+        Spacer(modifier = Modifier.weight(1f))
+        // v0.1.3 (profile D26): the last row of settings
+        SecondaryButton(c.exitApp, { vm.askExit() }, Modifier.fillMaxWidth())
     }
 }
 

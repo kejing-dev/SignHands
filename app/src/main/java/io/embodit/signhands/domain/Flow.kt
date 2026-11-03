@@ -1,9 +1,13 @@
 package io.embodit.signhands.domain
 
-/** The design package's states (`states[]`); SPIKE is the debug-only recognition page. */
-enum class Screen { S00, S01, S02, S03, S04, S05, S06, S07, S08, S09, S10, S11, S12, S13, S14, S15, SPIKE }
+/**
+ * The design package's states (`states[]`); SPIKE is the debug-only recognition page. v0.1.3 adds S16, the everyday
+ * words page (profile B18), and the S14 "exit" confirmation (profile D26).
+ */
+enum class Screen { S00, S01, S02, S03, S04, S05, S06, S07, S08, S09, S10, S11, S12, S13, S14, S15, S16, SPIKE }
 
-enum class CourseMode { LESSON, WORDS, FREE }
+/** SIGNS (v0.1.3): the word signs of one theme, from the words page; a step's [Step.letter] is the sign id. */
+enum class CourseMode { LESSON, WORDS, FREE, SIGNS }
 
 /** One letter to learn: [word] is set in lesson 6 (spell words). */
 data class Step(val letter: String, val word: String? = null, val posInWord: Int = 0)
@@ -60,6 +64,9 @@ sealed interface Effect {
     data object ClearProgress : Effect
 
     data class Log(val line: String) : Effect
+
+    /** v0.1.3 (profile D26): "Exit" confirmed in settings: release tracking, finish the task, end the process. */
+    data object Exit : Effect
 }
 
 data class UiState(
@@ -95,6 +102,8 @@ data class UiState(
     val spikeLetter: String = "A",
     /** v0.1.2: hand tracking as last seen by the scene, shown on the panel. */
     val support: Support = Support.WAIT,
+    /** v0.1.3: the theme shown on the words page (S16). */
+    val theme: Theme = Theme.GREET,
 ) {
     val inFollow: Boolean
         get() = screen == Screen.S06 || screen == Screen.S07 || screen == Screen.S08
@@ -102,15 +111,19 @@ data class UiState(
     val inQuiz: Boolean
         get() = screen == Screen.S09 || screen == Screen.S10
 
-    /** The letter on the panel / label now. */
+    /** The letter on the panel / label now (null while a word sign is learned). */
     val letter: String?
         get() =
             when (screen) {
                 Screen.S09, Screen.S10 -> quiz?.letter
-                Screen.S02 -> if (lostFrom == Screen.S09 || lostFrom == Screen.S10) quiz?.letter else course?.letter
+                Screen.S02 -> if (lostFrom == Screen.S09 || lostFrom == Screen.S10) quiz?.letter else course?.takeIf { it.mode != CourseMode.SIGNS }?.letter
                 Screen.SPIKE -> spikeLetter
-                else -> course?.letter
+                else -> course?.takeIf { it.mode != CourseMode.SIGNS }?.letter
             }
+
+    /** The word sign learned now (S05 - S08 and S02 of a SIGNS course). */
+    val sign: Sign?
+        get() = if (course?.mode == CourseMode.SIGNS && screen != Screen.S09 && screen != Screen.S10) Signs[course.letter] else null
 
     val free: Boolean
         get() = course?.mode == CourseMode.FREE
@@ -193,6 +206,20 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
 
     fun openAlphabet(now: Long) = go(Screen.S13, now)
 
+    /** v0.1.3: the everyday words page (S16), on the last theme looked at. */
+    fun openWords(now: Long) = go(Screen.S16, now, s = state.copy(course = null, quiz = null))
+
+    fun setTheme(t: Theme) = set(state.copy(theme = t))
+
+    /** A word of the words page: the theme's words from this one on, watch first (S05). */
+    fun openSign(id: String, now: Long) {
+        val sign = Signs[id] ?: return
+        val words = Signs.inTheme(sign.theme)
+        val course = Course(CourseMode.SIGNS, 0, words.map { Step(it.id) }, index = words.indexOf(sign))
+        set(state.copy(course = course, quiz = null, theme = sign.theme, slow = false, opposite = false))
+        go(Screen.S05, now)
+    }
+
     fun openSettings(now: Long) = go(Screen.S14, now)
 
     fun home(now: Long) {
@@ -203,10 +230,14 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     /** "<-" of any page. */
     fun back(now: Long) {
         when (state.screen) {
-            Screen.S05, Screen.S06, Screen.S07, Screen.S08 -> if (state.free) go(Screen.S13, now, s = state.copy(course = null)) else home(now)
-            Screen.S02 -> if (state.free) go(Screen.S13, now, s = state.copy(course = null, lostFrom = null)) else home(now)
+            Screen.S05, Screen.S06, Screen.S07, Screen.S08, Screen.S02 ->
+                when {
+                    state.course?.mode == CourseMode.SIGNS -> go(Screen.S16, now, s = state.copy(course = null, lostFrom = null))
+                    state.free -> go(Screen.S13, now, s = state.copy(course = null, lostFrom = null))
+                    else -> home(now)
+                }
             Screen.S09, Screen.S10 -> home(now)
-            Screen.S14 -> if (state.variant == "confirm") go(Screen.S14, now) else home(now)
+            Screen.S14 -> if (state.variant == "confirm" || state.variant == "exit") go(Screen.S14, now) else home(now)
             else -> home(now)
         }
     }
@@ -225,6 +256,7 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
             advance(now, Mark.SEEN)
             return
         }
+        if (course.mode == CourseMode.SIGNS) return enterJudged(Screen.S06, now)
         val letter = book[course.letter]
         enterJudged(if (letter.scored) Screen.S06 else Screen.S08, now)
     }
@@ -240,7 +272,7 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     fun matched(now: Long) {
         when (state.screen) {
             Screen.S06 -> {
-                val l = state.course?.letter ?: return
+                val l = followedKey() ?: return
                 effects += Effect.Ding
                 set(state.copy(progress = state.progress.copy(followed = state.progress.followed + l)))
                 effects += Effect.SaveProgress
@@ -264,10 +296,13 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
         advance(now, Mark.OK)
     }
 
+    /** The progress key of what is followed now: the letter, or "w:<sign>" for a word sign. */
+    private fun followedKey(): String? = state.sign?.key ?: state.course?.letter
+
     /** v0.1.1 S06 "Next ›": no penalty, the letter counts as followed (judging is only a helper now). */
     fun nextLetter(now: Long) {
         if (state.screen != Screen.S06 && state.screen != Screen.S08) return
-        val l = state.course?.letter ?: return
+        val l = followedKey() ?: return
         set(state.copy(progress = state.progress.copy(followed = state.progress.followed + l)))
         effects += Effect.SaveProgress
         advance(now, Mark.OK)
@@ -304,6 +339,16 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
         val c = state.course ?: return
         if (c.mode == CourseMode.FREE) {
             go(Screen.S13, now, s = state.copy(course = null))
+            return
+        }
+        if (c.mode == CourseMode.SIGNS) {
+            // the theme's next word, or back to the words page after its last
+            if (c.index + 1 < c.steps.size) {
+                set(state.copy(course = c.copy(index = c.index + 1), slow = false, opposite = false))
+                go(Screen.S05, now)
+            } else {
+                go(Screen.S16, now, s = state.copy(course = null))
+            }
             return
         }
         if (c.mode == CourseMode.WORDS && mark != Mark.SKIP && !state.watchOnly) {
@@ -498,6 +543,14 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     }
 
     fun toggleAbout() = set(state.copy(aboutOpen = !state.aboutOpen))
+
+    /** v0.1.3 (profile D26): "Exit" at the bottom of settings asks first (S14 variant "exit"). */
+    fun askExit(now: Long) = go(Screen.S14, now, "exit")
+
+    fun confirmExit() {
+        if (state.screen != Screen.S14 || state.variant != "exit") return
+        effects += Effect.Exit
+    }
 
     // ------------------------------------------------------------------------------------------- time
 

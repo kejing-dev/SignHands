@@ -18,4 +18,13 @@ object TestBook {
         val practice = PracticeFrame(head, yawOf(V3(w.x - head.x, 0f, w.z - head.z)))
         return HandMath.features(joints, handed, practice, HandMath.handLength(HandMath.rightLocal(joints, HandFrame.of(joints, handed)!!, handed)))!!
     }
+
+    /** One frame the way SignScene.judgeFrame does it (head yaw 0): features, verdict, the followed point. */
+    fun judgeFrame(judge: Judge, joints: List<V3>, handed: Handed, ms: Long, headYaw: Float = 0f): Boolean {
+        val w = joints[J.WRIST]
+        val practice = PracticeFrame(head, yawOf(V3(w.x - head.x, 0f, w.z - head.z)))
+        val f = HandMath.features(joints, handed, practice) ?: return false
+        val point = HandMath.trackPoint(joints, judge.target.track, PracticeFrame(head, headYaw), handed)
+        return judge.push(ms, judge.frame(f), point)
+    }
 }

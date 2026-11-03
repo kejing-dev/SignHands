@@ -33,6 +33,11 @@ import io.embodit.signhands.domain.J
 import io.embodit.signhands.domain.Judge
 import io.embodit.signhands.domain.Layout
 import io.embodit.signhands.domain.Letter
+import io.embodit.signhands.domain.Motion
+import io.embodit.signhands.domain.Performer
+import io.embodit.signhands.domain.Placement
+import io.embodit.signhands.domain.Sign
+import io.embodit.signhands.domain.Target
 import io.embodit.signhands.domain.PracticeFrame
 import io.embodit.signhands.domain.Q4
 import io.embodit.signhands.domain.Reveal
@@ -103,6 +108,10 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     private var hintRing: ModelEntity? = null
     private var arrow: ModelEntity? = null
     private val trail = ArrayList<ModelEntity>()
+    /** v0.1.3 word demos: an outline of the signer's head and shoulders, so "at the chin" / "on the chest" reads. */
+    private var headOutline: ModelEntity? = null
+    private var shoulders: ModelEntity? = null
+    private var lastLoosen = -1L
 
     private inner class Slot(val id: String, val holder: Entity, val scale: Float) {
         var panel: Entity? = null
@@ -234,6 +243,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     }
 
     fun detach() {
+        // v0.1.3: also called by settings > Exit before the Stage is disposed; the second call does nothing
+        if (!attached && root == null) return
         ActiveScene.scene = null
         attached = false
         work.clear()
@@ -320,6 +331,17 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
                 it.setVisible(false)
             }
         }
+        work += "body" to {
+            val mat = unlit(shared, SignColors.Ring, BlendingMode.TRANSPARENT, opacity = 0.5f, twoSided = true, depthWrite = false)
+            headOutline = ModelEntity(Meshes.ring(HEAD_R - 0.004f, HEAD_R, "headOutline", segments = 64), mat).also {
+                root.addChild(it)
+                it.setVisible(false)
+            }
+            shoulders = ModelEntity(Meshes.unitCube("shoulders"), mat).also {
+                root.addChild(it)
+                it.setVisible(false)
+            }
+        }
         work += "trail" to {
             val dot = shared.keep(MeshResource.createSphere(SphereOption(1f).setName("trailDot")))
             val mat: UnlitMaterial = unlit(shared, SignColors.TrailAmber)
@@ -389,16 +411,15 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     /** "Bring here" (D21): panel straight ahead and a little to the non-dominant side, 15 degrees down, 0.9 m, facing you; then locked. */
     fun recall() {
         val pose = head.pose() ?: return
-        placeStation(headPosOf(pose), pose.yaw, vm.state.value.settings.hand)
+        placeStation(headPosOf(pose), Placement.heading(pose.rotation), vm.state.value.settings.hand)
         SignLog.i("PANEL recalled to ${fmt(stationPos)} yaw=${stationYaw.toInt()}")
     }
 
+    /** v0.1.3 (profile D9): every placement goes through [Placement.placeUpright] (heading only, upright). */
     private fun placeStation(headPos: V3, headYaw: Float, handed: Handed) {
-        val side = if (handed == Handed.RIGHT) STATION_SIDE_DEG else -STATION_SIDE_DEG
-        val dir = dirOf(headYaw + side)
-        stationPos = headPos + dir * (STATION_DIST * kotlin.math.cos(STATION_DOWN_DEG * PI.toFloat() / 180f)) +
-            V3(0f, -STATION_DIST * sin(STATION_DOWN_DEG * PI.toFloat() / 180f), 0f)
-        stationYaw = headYaw + side
+        val placed = Placement.placeUpright(headPos, headYaw, handed)
+        stationPos = placed.position
+        stationYaw = placed.yaw
         stationSet = true
     }
 
@@ -498,9 +519,16 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             when {
                 noHand -> null
                 fake != null -> {
-                    val spot = headPractice.toSpace(Layout.sided(Layout.TEACHING_SPOT, handed) + fake!!.offset)
-                    val p = PracticeFrame(headPos, yawOf(V3(spot.x - headPos.x, 0f, spot.z - headPos.z)))
-                    fake!!.joints(book, p, handed, frame)
+                    val fk = fake!!
+                    val target = fk.target(book)
+                    if (target != null) {
+                        // v0.1.3: `fakeHand sign=<id>` / `move=1` performs the move (path judging on the emulator)
+                        Performer.joints(book, target, handed, headPos, headYawSmooth, now - fk.startMs, fk.sloppy())
+                    } else {
+                        val spot = headPractice.toSpace(Layout.sided(Layout.TEACHING_SPOT, handed) + fk.offset)
+                        val p = PracticeFrame(headPos, yawOf(V3(spot.x - headPos.x, 0f, spot.z - headPos.z)))
+                        fk.joints(book, p, handed, frame)
+                    }
                 }
                 else -> hands.joints(handed)
             }
@@ -544,10 +572,11 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         }
 
         diagnostics(now, headPos, pose.yaw, s)
-        judgeFrame(s, features, now)
+        judgeFrame(s, features, joints, headPractice, handed, now)
         val letter = s.letter?.let { book.letters[it] }
-        updateGhost(s, letter, joints, frameOfHand, practice, headPractice, handed, dt, now)
-        updateWatch(s, letter, pose.yaw, headPos, handed, dt)
+        updateGhost(s, letter ?: s.sign?.let { book.letters[it.shape] }, joints, frameOfHand, practice, headPractice, handed, dt, now)
+        val sign = s.sign
+        if (sign != null) updateSignWatch(s, sign, handed, dt) else updateWatch(s, letter, pose.yaw, headPos, handed, dt)
         updateMarkers(s, letter, joints, headPos)
         updatePanels(s, pose.yaw, headPos, joints, headPractice, handed, dt)
 
@@ -559,43 +588,57 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
 
     // ----------------------------------------------------------------------------------------- judging
 
-    private fun judgeFrame(s: UiState, f: Features?, now: Long) {
+    private fun judgeFrame(s: UiState, f: Features?, joints: List<V3>?, headPractice: PracticeFrame, handed: Handed, now: Long) {
         val l = s.letter?.let { book.letters[it] }
-        val active = l != null && l.scored && (s.screen == Screen.S06 || s.screen == Screen.S09 || s.screen == Screen.SPIKE)
-        val key = if (active) "${s.screen}:${l!!.l}:${s.enteredMs}:${s.quiz?.index}:${s.quiz?.retryIndex}" else ""
+        val sign = s.sign
+        val target = sign?.let { Target.of(it, book) } ?: l?.takeIf { it.scored }?.let { Target.of(it) }
+        val active = target != null && (s.screen == Screen.S06 || s.screen == Screen.S09 || s.screen == Screen.SPIKE)
+        val key = if (active) "${s.screen}:${target!!.key}:${s.enteredMs}:${s.quiz?.index}:${s.quiz?.retryIndex}" else ""
         if (key != judgeKey) {
             autolog(now)
             judgeKey = key
-            judge = if (active) Judge(l!!) else null
+            judge = if (active) Judge(target!!) else null
             matchSent = false
             hintHolder.reset()
             verdict = null
             featSum = null
             featN = 0
+            lastLoosen = -1L
         }
         val j = judge ?: run {
             if (s.hint != null && s.screen != Screen.S10) vm.hint(null)
             return
         }
-        if (f == null) return
+        if (f == null || joints == null) return
         val v = j.frame(f)
         verdict = v
-        val passed = j.push(now, v)
+        // moving targets (J, Z, word signs) follow a point of the hand in the head frame (right-hand terms)
+        val point = if (j.target.moving) HandMath.trackPoint(joints, j.target.track, headPractice, handed) else null
+        val passed = j.push(now, v, point)
         accumulate(f)
         if (passed && !matchSent && s.screen != Screen.SPIKE) {
             matchSent = true
-            SignLog.i("MATCH letter=${j.letter.l} share=${"%.2f".format(j.share())} ${f.line()}")
+            SignLog.i("MATCH target=${j.target.key} tier=${j.tier} share=${"%.2f".format(j.share())} move=${"%.2f".format(j.moveRatio)} ${f.line()}")
             autolog(now)
             vm.matched()
             return
         }
+        if (j.loosenedAt != lastLoosen) {
+            // D27: two almost-tries in a row loosened the target; the label says so for a moment
+            lastLoosen = j.loosenedAt
+            SignLog.i("LOOSEN target=${j.target.key} tier=${j.tier}")
+            hintHolder.force("loosen", now)
+        }
         val worst = v.worst
-        val hintKey = hintHolder.offer(worst?.let { HintHolder.keyOf(it, j.letter) }, now)
+        val shapeKey = worst?.let { HintHolder.keyOf(it, j.letter) }
+        val pathKey = j.moveHint?.takeIf { it != "shape" && v.pass }
+        val hintKey = hintHolder.offer(pathKey ?: shapeKey, now)
         if (now - lastHintMs >= HINT_MS) {
             lastHintMs = now
             vm.hint(hintKey)
             if (s.screen == Screen.SPIKE) {
-                spikeText.value = "${j.letter.l}  ${(j.share() * 100).toInt()}%\n" + v.items.joinToString("  ") { "${it.item.key}=${"%.2f".format(it.ratio)}" } + "\n" + f.line()
+                spikeText.value = "${j.target.key}  ${(j.share() * 100).toInt()}% tier=${j.tier}" + (if (j.target.moving) " move=${"%.2f".format(j.moveRatio)} ${j.moveHint ?: ""}" else "") + "\n" +
+                    v.items.joinToString("  ") { "${it.item.key}=${"%.2f".format(it.ratio)}" } + "\n" + f.line()
             }
         }
     }
@@ -618,7 +661,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val m = a.map { it / featN }
         val jit = if (jitterN > 0) jitterSum / jitterN * 1000f else 0f
         SignLog.i(
-            "AUTOLOG letter=${j.letter.l} matched=$matchSent share=${"%.2f".format(j.share())} frames=$featN flex=${m.subList(0, 4).joinToString(",") { it.toInt().toString() }} " +
+            "AUTOLOG target=${j.target.key} tier=${j.tier} matched=$matchSent share=${"%.2f".format(j.share())} frames=$featN flex=${m.subList(0, 4).joinToString(",") { it.toInt().toString() }} " +
                 "spread=${m.subList(4, 7).joinToString(",") { it.toInt().toString() }} thumb=${m.subList(7, 10).joinToString(",") { "%.2f".format(it) }} wristStepMm=${"%.2f".format(jit)} len=${"%.3f".format(handLength)}"
         )
         featSum = null
@@ -667,7 +710,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             wristFilter.reset()
             val p = headPractice
             wrist = p.toSpace(Layout.sided(Layout.TEACHING_SPOT, handed))
-            rotation = p.rotation * HandMath.handedOrient(l.orient, handed)
+            rotation = p.rotation * HandMath.handedOrient(s.sign?.orient ?: l.orient, handed)
             modelScale = HandMath.DEFAULT_HAND_LENGTH / book.modelHandLength
         }
         // J / Z in S08: the teacher's hand loops the move (no trail)
@@ -722,6 +765,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val demo = s.screen == Screen.S03
         val shownLetter = if (demo) book[DEMO_LETTERS[((SystemClock.elapsedRealtime() / DEMO_MS) % DEMO_LETTERS.size).toInt()]] else letter
         val shown = (s.screen == Screen.S05 || demo) && shownLetter != null && view != null
+        headOutline?.setVisible(false)
+        shoulders?.setVisible(false)
         if (!shown) {
             view?.setVisible(false)
             ring?.setVisible(false)
@@ -744,7 +789,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         }
         view!!.setVisible(true)
         watchT += dt * if (s.slow) 0.5f else 1f
-        val motionSec = when (l.motion) { "J" -> 1.2f; "Z" -> 1.5f; else -> 0f }
+        val motionSec = Motion.seconds(l.motion)
         val cycle = MORPH + motionSec + WATCH_HOLD + 0.3f
         if (watchT > cycle) watchT = 0f
         val u = (watchT / MORPH).coerceIn(0f, 1f)
@@ -783,6 +828,97 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         }
         // the turntable under the model
         val ringPos = centre + V3(0f, -RING_BELOW, 0f)
+        ring?.setVisible(true)
+        ring?.setLocal(position = ringPos)
+        ringHit?.setLocal(position = ringPos)
+    }
+
+    /**
+     * v0.1.3 word demo (S05 of a word sign): the big demo hand morphs into the sign's handshape, then moves its palm along
+     * the sign's path round an outline of the signer's head and shoulders (so chin / forehead / chest read), with the
+     * path drawn behind it. Two-handed signs show the other hand resting in its spot. Same turntable, slow and "from the
+     * front" as the letters.
+     */
+    private fun updateSignWatch(s: UiState, sign: Sign, handed: Handed, dt: Float) {
+        val other = if (handed == Handed.RIGHT) Handed.LEFT else Handed.RIGHT
+        val view = watch[handed]
+        val shape = book.letters[sign.shape]
+        if (s.screen != Screen.S05 || view == null || shape == null) {
+            view?.setVisible(false)
+            watch[other]?.setVisible(false)
+            headOutline?.setVisible(false)
+            shoulders?.setVisible(false)
+            ring?.setVisible(false)
+            ringHit?.setLocal(position = STOW)
+            trail.forEach { it.setVisible(false) }
+            watchKey = ""
+            return
+        }
+        val key = "${sign.id}:${s.enteredMs}:${s.course?.index}"
+        if (key != watchKey || s.replay != lastReplay) {
+            if (key != watchKey) {
+                userTurn = 0f
+                turn = SIGN_TURN
+            }
+            watchKey = key
+            lastReplay = s.replay
+            watchT = 0f
+        }
+        view.setVisible(true)
+        watchT += dt * if (s.slow) 0.5f else 1f
+        val moveSec = Performer.SIGN_MS / 1000f
+        val cycle = MORPH + moveSec + WATCH_HOLD + 0.3f
+        if (watchT > cycle) watchT = 0f
+        val u = (watchT / MORPH).coerceIn(0f, 1f)
+        view.pose(shape.clipStart + book.morphSec * u)
+        val target = SIGN_TURN + userTurn + if (s.opposite) 180f else 0f
+        val step = 180f / 0.4f * dt
+        val d = target - turn
+        turn = if (abs(d) <= step) target else turn + if (d > 0) step else -step
+        val spin = Q4.yaw(if (handed == Handed.RIGHT) turn else -turn)
+        val frameRot = Q4.yaw(stationYaw) * spin
+        val k = SIGN_SCALE
+        // the signer's head: the demo's centre of interest (chest height) sits on the watch spot
+        val origin = watchCentre() - frameRot.rotate(Layout.sided(SIGN_CENTRE, handed) * k)
+        fun toSpace(p: V3): V3 = origin + frameRot.rotate(Layout.sided(p, handed) * k)
+        val m = ((watchT - MORPH) / moveSec).coerceIn(0f, 1f)
+        val palm = toSpace(sign.palmAt(m))
+        val rotation = frameRot * HandMath.handedOrient(Q4.IDENTITY.slerp(sign.orient, smoothstep(u)), handed)
+        val modelScale = k * HandMath.DEFAULT_HAND_LENGTH / book.modelHandLength
+        val centre = shape.joints.getValue("ok")[J.prox(1)] * 0.5f
+        view.place(palm - rotation.rotate((if (handed == Handed.LEFT) centre.mirrorX() else centre) * k), rotation, modelScale)
+        // the other hand of a two-handed sign
+        val base = sign.base
+        val otherView = watch[other]
+        val baseShape = base?.let { book.letters[it.shape] }
+        if (base != null && otherView != null && baseShape != null) {
+            otherView.setVisible(true)
+            otherView.pose(baseShape.clipStart + HOLD_AT)
+            val baseRot = frameRot * HandMath.handedOrient(base.orient, other)
+            val bc = baseShape.joints.getValue("ok")[J.prox(1)] * 0.5f
+            otherView.place(toSpace(base.at) - baseRot.rotate((if (other == Handed.LEFT) bc.mirrorX() else bc) * k), baseRot, modelScale)
+        } else {
+            otherView?.setVisible(false)
+        }
+        // head and shoulders outline
+        headOutline?.let {
+            it.setVisible(true)
+            it.setLocal(position = origin, rotation = frameRot * Q4.pitch(90f), scale = V3(k, k, k))
+        }
+        shoulders?.let {
+            it.setVisible(true)
+            it.setLocal(position = origin + frameRot.rotate(V3(0f, -SHOULDER_DROP * k, 0.02f * k)), rotation = frameRot, scale = V3(SHOULDER_W * k, 0.008f, 0.008f))
+        }
+        // the path, drawn as the palm moves
+        if (trail.size == TRAIL_DOTS) {
+            for (i in 0 until TRAIL_DOTS) {
+                val f = i / (TRAIL_DOTS - 1f)
+                val on = watchT > MORPH && f <= m
+                trail[i].setVisible(on)
+                if (on) trail[i].setLocal(position = toSpace(sign.palmAt(f)))
+            }
+        }
+        val ringPos = watchCentre() + V3(0f, -SIGN_RING_BELOW, 0f)
         ring?.setVisible(true)
         ring?.setLocal(position = ringPos)
         ringHit?.setLocal(position = ringPos)
@@ -863,6 +999,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         head.pose()?.let { sb.append(" head=(${"%.2f".format(it.position.x)},${"%.2f".format(it.position.y)},${"%.2f".format(it.position.z)}) yaw=${it.yaw.toInt()}") }
         sb.append(" station=${fmt(stationPos)} yaw=${stationYaw.toInt()}")
         sb.append(" handLen=${"%.3f".format(handLength)} visible=$reportedVisible fake=$fake models=${ghost.keys}/${watch.keys}")
+        judge?.let { sb.append(" judge=${it.target.key} tier=${it.tier} move=${"%.2f".format(it.moveRatio)} hint=${it.moveHint}") }
         verdict?.let { v -> sb.append(" verdict pass=${v.pass} ").append(v.items.joinToString(" ") { "${it.item.key}=${"%.2f".format(it.ratio)}${if (it.inside) "" else "!"}" }) }
         for (slot in slots.values) sb.append(" | ").append(slot.id).append(" shown=").append(slot.shown).append(" bound=").append(slot.panel != null)
         return sb.toString()
@@ -886,12 +1023,9 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         const val SUPPORT_WAIT_MS = 3000L
         const val TICK_MS = 100L
         const val HINT_MS = 100L
-        const val STATION_DIST = 0.9f
         const val STATION_SETTLE_MS = 2000L
         const val DEMO_MS = 4000L
         private val DEMO_LETTERS = listOf("A", "B", "C", "D", "L", "Y")
-        const val STATION_DOWN_DEG = 15f
-        const val STATION_SIDE_DEG = 14f
         const val PANEL_HALF_H = 0.2f
         const val HANDLE_W = 0.16f
         const val HANDLE_H = 0.016f
@@ -901,6 +1035,15 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         const val WATCH_UP = 0.06f
         const val LABEL_MOVE_SEC = 0.3f
         const val MOTION_LOOP_MS = 2400L
+        /** Word demos: scale of hand and body, default turntable angle, the outline. */
+        const val SIGN_SCALE = 1.3f
+        const val SIGN_TURN = 40f
+        const val HEAD_R = 0.085f
+        const val SHOULDER_DROP = 0.24f
+        const val SHOULDER_W = 0.36f
+        const val SIGN_RING_BELOW = 0.42f
+        /** The point of the signer's body (head frame) that sits on the watch spot. */
+        private val SIGN_CENTRE = V3(0.02f, -0.14f, -0.18f)
         const val SHOW_FRAMES = 2L
         const val FAST_FRAME_SEC = 0.04f
         const val SLOW_GAP_MS = 1500L
@@ -908,34 +1051,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         private val STOW = V3(0f, -40f, 0f)
         private val THREE_QUARTER = setOf("A", "B", "E", "M", "N", "S", "T")
         private val LABEL_SCREENS = setOf(Screen.S02, Screen.S06, Screen.S07, Screen.S08, Screen.S09, Screen.S10)
-    }
-}
-
-/** J and Z paths of the fingertip (design `letters.table` motion), practice frame, right hand, metres. */
-object Motion {
-    fun offset(motion: String, t: Float): V3 {
-        val u = t.coerceIn(0f, 1f)
-        return when (motion) {
-            "J" -> {
-                // down 6 cm, then towards the non-dominant side and a little towards the body (4 cm)
-                if (u < 0.55f) {
-                    V3(0f, -0.06f * smoothstep(u / 0.55f), 0f)
-                } else {
-                    val k = smoothstep((u - 0.55f) / 0.45f)
-                    V3(-0.04f * k, -0.06f + 0.015f * sin(k * PI.toFloat()), 0.015f * k)
-                }
-            }
-            "Z" -> {
-                // top left -> top right -> bottom left -> bottom right, as you see it
-                val pts = listOf(V3(-0.03f, 0.03f, 0f), V3(0.03f, 0.03f, 0f), V3(-0.03f, -0.03f, 0f), V3(0.03f, -0.03f, 0f))
-                val seg = (u * 3f).coerceAtMost(2.9999f)
-                val i = seg.toInt()
-                val k = seg - i
-                val p = pts[i] + (pts[i + 1] - pts[i]) * k
-                p - pts[0]
-            }
-            else -> V3.ZERO
-        }
     }
 }
 

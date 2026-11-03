@@ -1,8 +1,45 @@
 # 手语老师 Sign Hands — project notes for agents
 
-PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.1.1.
+PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.1.3.
 A translucent teacher's hand sits on your own hand and forms the 26 ASL letters; learned letters come back on a
-Leitner schedule.
+Leitner schedule. v0.1.3 adds 59 everyday ASL word signs in 9 themes.
+
+**v0.1.3 (user on the headset with v0.1.2: "握拳 M N，移动的比如 J 需要更模糊的判定正确，不然太难一直不对" /
+"需要更多词的…把常用的日常英语的词都加了" / "在设置里也加个退出应用的按钮"; profile D27, B18, D26)**
+- Forgiving judging (`domain/Matcher.kt`, `domain/Trajectory.kt`): every letter is judged now (no more self-check).
+  Each target has its own items: per finger straight (curl <= 55) / bent (>= 60) / curved (template +- 45), one finger
+  may be off, palm within 75 degrees for still letters. Fist letters A E M N S T compare only the fingers folded plus
+  where the thumb is: A beside, S across, E / M / N / T tucked (M, N, T are not told apart - the tracker cannot see a
+  thumb under the fingers). A still letter passes when held 0.3 s (60 % of the frames of the last 0.5 s close).
+  J, Z and the word signs compare the path shape only: the followed point (pinky tip / index tip / palm centre, head
+  frame) is smoothed, resampled by arc length, centred and scaled, then compared by banded RMS DTW (threshold 0.15),
+  with the template turned +-25 degrees in the facing plane and +-30 degrees about the vertical; windows of
+  0.3 - 3.2 s are tried (twice as slow fits); word signs must start within 0.2 m of their spot. Two "almost" tries
+  (1.5 s each, best ratio <= 1.6) in a row loosen the target one step (x1.3, then x1.6); the label says
+  "放宽了一点，再来" and always says what is off (finger / thumb / palm / "make the move bigger" / "follow the path" /
+  "a bit higher" ...). "Next ›" is always on the follow page.
+- Sloppy-recording gate (`SloppyRecordingsTest`): 12 synthetic recordings (turned 15-20 degrees, half to the side
+  25-30 degrees, twice as slow, 10 cm off, 3 mm jitter; M N T A J J Z THANK_YOU HELLO MOTHER PLEASE WHERE, one left
+  hand) must all pass on the first try without loosening; written to `app/build/sloppy-recordings/`. Synthetic
+  because no headset was on the build machine: replace / add real recordings when the headset logs them
+  (`AUTOLOG` / `MATCH` lines carry tier and move ratio).
+- Everyday words (`domain/Signs.kt`): 59 signs, themes greetings 6, polite words 5, yes / no 5, family 7, food & drink 7,
+  time 7, feelings 6, verbs 10, questions 6. Each = a handshape the hand GLB already has (letter pose or OPEN), a palm
+  orientation, a start spot (head frame) and a palm path; two-handed signs show the other hand resting (demo only, not
+  judged). Home > "常用词" opens the words page (S16, "‹ theme ›" + 3-column word cells, ✓ when done); a word opens
+  its demo (S05: the big hand at 1.3x moves round a head ring + shoulder line with the path drawn), "Try it" (S06,
+  judged), then the theme's next word; back returns to the words page.
+  **Word list source / licence:** the list is the everyday vocabulary taught first in beginner ASL courses; the
+  handshape / spot / path data and the Chinese and English descriptions were written for this app from general ASL
+  knowledge and simplified to one hand path. No dictionary text, drawing or video was copied (nothing to license).
+  The descriptions were not checked sign by sign against a dictionary on the build machine: a Deaf / ASL-fluent review
+  is still due (QA / user).
+- Settings > "退出应用" (last row) > "退出手语老师？" confirm > the scene detaches (hand + head tracking stop, entities
+  and panels go), every app task is finished and removed, the process ends 0.3 s later. About now replaces the
+  three setting rows instead of pushing the page out.
+- Panel placement (profile D9): start-up, the 70-degree re-place and "Bring here" all go through
+  `Placement.placeUpright` (heading only, upright, 15 degrees below the eye line, 0.9 m, 14 degrees to the
+  non-dominant side); `PlacementTest` covers head down 30 / up 30 / tilted 20.
 
 **v0.1.1 (user on the headset: "手势追踪不行，需要模糊一点" / "UI 跟头会偏")**
 - Judging is a loose helper, never a gate: for the 15 judged letters only each finger's straight / bent class
@@ -28,7 +65,7 @@ Do not change the container / window model. Per-frame 3D (hand data, judging, th
 
 | Path | What |
 |---|---|
-| `domain/` | Pure Kotlin, JVM-tested. `Letters.kt` (asl_letters.json model), `HandFeatures.kt` (hand frame, practice frame, features: flex, spread, thumb tip / hand length, palm normal, pointing; left hands mirrored to right-hand terms), `Matcher.kt` (care items per letter, thresholds, hysteresis 1.0 / 1.3, 0.8 s window at 85 %, worst item, tints, hint hold 1 s), `FakeHand.kt` (debug hand + layout constants), `Progress.kt` (Leitner 1/3/7/14/30), `Flow.kt` (every state S00-S15 + SPIKE, timers, two-step confirm) |
+| `domain/` | Pure Kotlin, JVM-tested. `Letters.kt` (asl_letters.json model), `HandFeatures.kt` (hand frame, practice frame, features: flex, spread, thumb tip / hand length, palm normal, pointing, `trackPoint`; left hands mirrored to right-hand terms), `Matcher.kt` (v0.1.3 targets, per-target care items, hold 0.3 s, path judging, tiers, hints), `Trajectory.kt` (resample / normalize / banded RMS DTW), `Signs.kt` (59 word signs, themes, palm orientations, body spots), `Placement.kt` (D9 upright placement), `FakeHand.kt` (debug hand, layout constants, J / Z paths, `Performer` = synthetic person doing a target, `Sloppy`), `Progress.kt` (Leitner 1/3/7/14/30), `Flow.kt` (every state S00-S16 + SPIKE, timers, two-step confirm, exit) |
 | `data/Store.kt` | `files/progress.json`, `files/settings.json` (clear removes progress only) |
 | `platform/` | `HandTracker` (HandTrackingProvider; **not started on the emulator**), `HeadTracker`, `Chime` (system tone, mute in settings) |
 | `scene/SignScene.kt` | Teacher's hand (overlay / beside), watch model (2x, 0.65 m, turntable ring drag, slow, from the front, 3/4 default angle, J/Z trail), hint ring / turn-palm arrow, lazy-follow lesson panel, hand label |
@@ -52,6 +89,9 @@ SERIAL=<serial> bash tools/dev.sh cmd "<command>"
 | Command | Effect |
 |---|---|
 | `fakeHand letter=<A-Z/OPEN> [off=thumb/index/middle/ring/pinky/palm] [pos=x,y,z] [bone=0.85-1.15] [jitter=0-1]` | synthetic dominant hand at the teaching spot (practice frame) |
+| `fakeHand sign=<ID> [slow=2] [turn=<deg>] [pos=x,y,z]` / `fakeHand letter=J move=1 …` | v0.1.3: the debug hand performs a word sign / draws J or Z over and over (path judging on the emulator; `pos` is the head-frame offset) |
+| `words [theme=GREET/POLITE/YESNO/FAMILY/FOOD/TIME/FEEL/VERB/QUESTION]` | words page (S16) on a theme |
+| `sign <ID> [stage=follow]` | a word's demo (S05) / its judged follow page (S06) |
 | `noHand` / `lost` | no hand (stays gone) / the fake hand removed (tracking takes over) |
 | `letter <L> stage=watch/follow [free=1]` | enter a letter (lesson context, or alphabet "free" mode); follow without a hand shows S02a |
 | `watch slow=1 opposite=1 angle=<deg>` | watch toggles; angle adds a drag turn |
@@ -66,10 +106,12 @@ SERIAL=<serial> bash tools/dev.sh cmd "<command>"
 | `state <S00..S15/SPIKE> [variant=a/b/c/confirm] [hold=1]` | jump to a state; `hold=1` freezes short states (S00, S07, S15) |
 | `limbs Visible/Default/Hidden` | upper-limb render mode |
 | `recall` / `dragpanel dx=<px> dy=<px>` | "Bring here" / the same path as dragging the panel's bar (`dump` logs `station=(x,y,z) yaw=`) |
-| `tap <action>` | panel action without a pointer: tryit nextletter showanswer recall self ready next yes no back home review alphabet settings mute lesson(n=) nextlesson watchagain right left clear confirm slow opposite replay about |
+| `tap <action>` | panel action without a pointer: tryit nextletter showanswer recall self ready next yes no back home review alphabet settings mute lesson(n=) nextlesson watchagain right left clear confirm slow opposite replay about; v0.1.3: words word(id=) themenext themeprev exit exitcancel exitconfirm (exitconfirm really exits) |
 | `release` / `dump` | clears hold / logs scene + state + progress |
 
-Logcat tag `SignHands`. Every state change logs `STATE <id>[/<variant>] letter=<L>`; a judged pass logs `MATCH`;
+Logcat tag `SignHands`. Every state change logs `STATE <id>[/<variant>] letter=<L>`; a judged pass logs
+`MATCH target=<L/ID> tier=<0-2> move=<ratio>`; a loosening logs `LOOSEN target= tier=`; text that does not fit logs
+`OVERFLOW <panel>/<control> '<text>'`; exit logs `EXIT confirmed` / `EXIT tasks finished`;
 `AUTOLOG letter=… share=… flex=… spread=… thumb=… wristStepMm=… len=…` is written per judged letter (device data for
 the judging templates, design `preconditions.autoLog`).
 
@@ -97,6 +139,11 @@ Emulator: set Graphics to High Definition first; take each shot twice (emu conso
 | S14 | `tap settings`; `set lang=en`; `state S14 variant=confirm` |
 | S15 | `state S15 hold=1` |
 | SPIKE | `fakeHand letter=V`, `state SPIKE letter=V` |
+| S16 (v0.1.3) | `words theme=GREET`; `words theme=VERB` (10 words, the fullest page); `set lang=en`, same two |
+| Word demo (v0.1.3) | `sign THANK_YOU` (one hand, chin); `sign NICE` (two hands); `watch opposite=1`; `watch angle=90` |
+| Word follow (v0.1.3) | `fakeHand sign=HELLO`, `sign HELLO stage=follow` (MATCH within ~1 s); `fakeHand sign=MOTHER pos=0,-0.3,0`, `sign MOTHER stage=follow` (label "手再高一点") |
+| J / Z judged (v0.1.3) | `fakeHand letter=J move=1 slow=2`, `letter J stage=follow` (MATCH); `fakeHand letter=M`, `letter M stage=follow` (MATCH) |
+| S14 exit (v0.1.3) | `tap settings` (exit row at the bottom); `tap exit` (confirm page); `tap exitcancel`; `tap about` (about replaces the rows) |
 
 ## Device-only (not provable on the emulator)
 

@@ -19,6 +19,7 @@ import io.embodit.signhands.domain.Reveal
 import io.embodit.signhands.domain.Screen
 import io.embodit.signhands.domain.Step
 import io.embodit.signhands.domain.Support
+import io.embodit.signhands.domain.Theme
 import io.embodit.signhands.domain.V3
 import io.embodit.signhands.platform.SignGraph
 import io.embodit.signhands.platform.SignLog
@@ -75,6 +76,11 @@ object DebugHost {
                             offset = args["pos"]?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 3 }?.let { V3(it[0], it[1], it[2]) } ?: V3.ZERO,
                             bone = args["bone"]?.toFloatOrNull() ?: 1f,
                             jitter = args["jitter"]?.toFloatOrNull() ?: 0f,
+                            sign = args["sign"]?.uppercase(Locale.US),
+                            move = args["move"] == "1",
+                            slow = args["slow"]?.toFloatOrNull() ?: 1f,
+                            turnDeg = args["turn"]?.toFloatOrNull() ?: 0f,
+                            startMs = android.os.SystemClock.elapsedRealtime(),
                         )
                 }
                 "nohand" -> {
@@ -98,6 +104,17 @@ object DebugHost {
                             debugGo(Screen.S05, now)
                         }
                     }
+                }
+                "words" -> {
+                    // v0.1.3: words [theme=GREET..QUESTION]
+                    vm.openWords()
+                    themeOf(args["theme"] ?: bare.firstOrNull())?.let { vm.setTheme(it) }
+                }
+                "sign" -> {
+                    // v0.1.3: sign <ID> [stage=watch/follow]
+                    val id = (bare.firstOrNull() ?: args["id"] ?: "HELLO").uppercase(Locale.US)
+                    vm.openSign(id)
+                    if (args["stage"] == "follow") vm.tryIt()
                 }
                 "watch" -> vm.debug { _, _ ->
                     debugSet(state.copy(slow = args["slow"]?.let { it == "1" } ?: state.slow, opposite = args["opposite"]?.let { it == "1" } ?: state.opposite))
@@ -168,6 +185,7 @@ object DebugHost {
                             }
                             Screen.S12 -> debugSet(state.copy(reviewDone = io.embodit.signhands.domain.ReviewDone(3, 3, 2)))
                             Screen.SPIKE -> debugSet(state.copy(spikeLetter = args["letter"]?.uppercase(Locale.US) ?: state.spikeLetter))
+                            Screen.S16 -> debugSet(state.copy(course = null, theme = themeOf(args["theme"]) ?: state.theme))
                             else -> Unit
                         }
                         debugGo(screen, now, variant)
@@ -217,6 +235,13 @@ object DebugHost {
                         "opposite" -> vm.toggleOpposite()
                         "replay" -> vm.replay()
                         "about" -> vm.toggleAbout()
+                        "words" -> vm.openWords()
+                        "word" -> vm.openSign((args["id"] ?: "HELLO").uppercase(Locale.US))
+                        "themenext" -> vm.setTheme(Theme.entries[(vm.state.value.theme.ordinal + 1) % Theme.entries.size])
+                        "themeprev" -> vm.setTheme(Theme.entries[(vm.state.value.theme.ordinal + Theme.entries.size - 1) % Theme.entries.size])
+                        "exit" -> vm.askExit()
+                        "exitcancel" -> vm.cancelExit()
+                        "exitconfirm" -> vm.confirmExit()
                         else -> SignLog.i("CMD tap: unknown action")
                     }
                 }
@@ -228,6 +253,8 @@ object DebugHost {
             SignLog.e("CMD $name failed: $t", t)
         }
     }
+
+    private fun themeOf(name: String?): Theme? = name?.let { n -> Theme.entries.firstOrNull { it.name.equals(n, ignoreCase = true) } }
 
     /** Lesson 1 done, three letters due today, the rest of lesson 1 tomorrow. */
     private fun seed(flow: io.embodit.signhands.domain.Flow, today: Long) {

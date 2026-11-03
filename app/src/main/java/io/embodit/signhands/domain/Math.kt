@@ -180,7 +180,7 @@ fun angleDeg(a: V3, b: V3): Float {
 }
 
 /** Yaw (heading) of a head rotation, degrees. */
-fun headYawOf(q: Q4): Float = yawOf(q.forward)
+fun headYawOf(q: Q4): Float = Placement.heading(q)
 
 /** Pitch of a head rotation, degrees, positive when looking up. */
 fun headPitchOf(q: Q4): Float = asin(q.forward.y.coerceIn(-1f, 1f)).toDeg()

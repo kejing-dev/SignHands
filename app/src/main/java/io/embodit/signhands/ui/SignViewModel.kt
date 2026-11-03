@@ -14,6 +14,7 @@ import io.embodit.signhands.domain.Lang
 import io.embodit.signhands.domain.LetterBook
 import io.embodit.signhands.domain.Screen
 import io.embodit.signhands.domain.Support
+import io.embodit.signhands.domain.Theme
 import io.embodit.signhands.domain.UiState
 import io.embodit.signhands.platform.Chime
 import io.embodit.signhands.platform.SignLog
@@ -61,6 +62,7 @@ class SignViewModel(application: Application) : AndroidViewModel(application) {
                 Effect.SaveSettings -> store.saveSettings(flow.state.settings)
                 Effect.ClearProgress -> store.clearProgress()
                 is Effect.Log -> SignLog.i(e.line)
+                Effect.Exit -> onExit?.invoke()
             }
         }
         _state.value = flow.state
@@ -104,6 +106,12 @@ class SignViewModel(application: Application) : AndroidViewModel(application) {
     fun startReview() = act { startReview(today, now()) }
 
     fun openAlphabet() = act { openAlphabet(now()) }
+
+    fun openWords() = act { openWords(now()) }
+
+    fun setTheme(t: Theme) = act { setTheme(t) }
+
+    fun openSign(id: String) = act { openSign(id, now()) }
 
     fun openSettings() = act { openSettings(now()) }
 
@@ -162,6 +170,16 @@ class SignViewModel(application: Application) : AndroidViewModel(application) {
     fun cancelClear() = act { debugGo(Screen.S14, now()) }
 
     fun toggleAbout() = act { toggleAbout() }
+
+    /** v0.1.3 (profile D26): settings > Exit asks first; the confirmed exit is carried out by the screen ([onExit]). */
+    fun askExit() = act { askExit(now()) }
+
+    fun confirmExit() = act { confirmExit() }
+
+    fun cancelExit() = act { debugGo(Screen.S14, now()) }
+
+    /** Set by the screen: release the scene's tracking, finish the task, end the process. */
+    var onExit: (() -> Unit)? = null
 
     // ------------------------------------------------------------------------------------------ debug
 

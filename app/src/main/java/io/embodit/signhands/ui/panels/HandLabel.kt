@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -46,7 +48,7 @@ fun HandLabel(state: UiState, book: LetterBook) {
     val line: String? =
         when (state.screen) {
             Screen.S02 -> c.raiseShort(state.variant == "b")
-            Screen.S06 -> c.hint(state.hint) ?: c.fitHint.take(if (c.en) 30 else 12)
+            Screen.S06 -> c.hint(state.hint) ?: if (state.sign != null) c.signShort else c.fitHint.take(if (c.en) 30 else 12)
             Screen.S07 -> c.right
             Screen.S08 -> letter?.let { book.letters[it]?.tip(if (c.en) Lang.EN else Lang.ZH) }
             Screen.S09 -> null
@@ -64,10 +66,18 @@ fun HandLabel(state: UiState, book: LetterBook) {
     val outline = TextStyle(shadow = Shadow(color = SignColors.LabelShadow, offset = Offset(0f, 0f), blurRadius = 6f))
     Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)).background(Color(0xCC14121A)).padding(horizontal = 12.dp, vertical = 6.dp), contentAlignment = Alignment.CenterStart) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            val big = wordDone?.let { "$it ✓" } ?: letter ?: ""
+            val sign = state.sign
+            val big = wordDone?.let { "$it ✓" } ?: letter ?: sign?.en ?: ""
             // v0.1.1: no quiz countdown ring (no time pressure, no penalty)
-            Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-                Text(big, fontSize = if (wordDone != null) 22.sp else 48.sp, fontWeight = FontWeight.SemiBold, color = if (wordDone != null) SignColors.Jade else ink, style = outline, maxLines = 1)
+            if (sign != null && wordDone == null) {
+                // v0.1.3: a word sign's name is longer than a letter
+                Box(modifier = Modifier.width(96.dp).height(64.dp), contentAlignment = Alignment.CenterStart) {
+                    FitText(big, TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold).merge(outline), ink, id = "label/word", maxLines = 2, minScale = 0.6f)
+                }
+            } else {
+                Box(modifier = Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+                    Text(big, fontSize = if (wordDone != null) 22.sp else 48.sp, fontWeight = FontWeight.SemiBold, color = if (wordDone != null) SignColors.Jade else ink, style = outline, maxLines = 1)
+                }
             }
             if (line != null && wordDone == null) {
                 Column {
