@@ -1,8 +1,29 @@
 # 手语老师 Sign Hands — project notes for agents
 
-PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.1.3.
+PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.1.4.
 A translucent teacher's hand sits on your own hand and forms the 26 ASL letters; learned letters come back on a
 Leitner schedule. v0.1.3 adds 59 everyday ASL word signs in 9 themes.
+
+**v0.1.4 (user, 2026-11-02: "UI 窗口下面那个拖动的 bar，别用3D 模型做那么丑的…用那里面带的原生效果的" / "合并到一个模版" /
+"用原生 tab bar 组件"; on the headset with v0.1.3, 2026-11-03, twice: "把 UI 的 tab bar 用 spatial UI 的原生组件做" /
+"UI window 的 tab bar 还是没有换原生的组件"; profile D8 / D9 / D21, factory `prompts/snippets/native-window-move.md`)**
+- All lesson UI is one system Planar window (`Main.kt` `WindowContainer(PANEL_ID, Form.Planar, 620 x 500 dp)`,
+  `ui/window/SignWindow.kt`), opened from the Stage. The system moves / closes / minimises it (the dot under it);
+  the app has no panel drag code. The self-built 3D drag bar, its collider, `movePanel`, the `dragpanel` command
+  and the "捏住下面的横条" line are gone. The turntable ring under the demo hand still drags (the 3D object's own).
+- Pages are switched by the SpatialUI `TabBar` (`ui/window/MainWindowTemplate.kt`): 课程 / 字母表 / 常用词 / 设置.
+  The page follows the state (`domain/MainWindow.kt` `Tab.of`): a lesson, a free letter or a word demo stays under
+  the tab it was started from; tapping the tab already shown does nothing (a stray tap must not end a lesson).
+  No TabBar before a hand is chosen (S00 / S01). The ⚙ and "Bring here" left the title row; "Bring here" is a
+  settings row now (closes the window and opens it again in front of you, demo hand beside it).
+- D9: every open (start, the chip after x, "Bring here") waits until the head is level (|pitch| <= 10 degrees for
+  300 ms, `domain/LevelGate.kt`, same as drone-sight v0.1.3); until then the Stage shows "平视前方 / 面板就出来"
+  on the line of sight. With the window closed (x) the Stage shows an "打开面板" chip. One process-wide
+  `SignViewModel.shared()` serves the Stage and the window (closing the window keeps the lesson).
+- D8: the app cannot read the window's pose; it estimates it when the window is created (straight ahead of the
+  level head, 1.75 m). The demo hand stands on the dominant side of it, 0.8 m ahead, 0.48 m out, 0.18 m down
+  (about 31 degrees), never in front of or behind it; the hand label is pushed off it (`MainWindowLayout.clearOf`).
+  After a system drag the estimate is stale until "Bring here".
 
 **v0.1.3 (user on the headset with v0.1.2: "握拳 M N，移动的比如 J 需要更模糊的判定正确，不然太难一直不对" /
 "需要更多词的…把常用的日常英语的词都加了" / "在设置里也加个退出应用的按钮"; profile D27, B18, D26)**
@@ -65,12 +86,12 @@ Do not change the container / window model. Per-frame 3D (hand data, judging, th
 
 | Path | What |
 |---|---|
-| `domain/` | Pure Kotlin, JVM-tested. `Letters.kt` (asl_letters.json model), `HandFeatures.kt` (hand frame, practice frame, features: flex, spread, thumb tip / hand length, palm normal, pointing, `trackPoint`; left hands mirrored to right-hand terms), `Matcher.kt` (v0.1.3 targets, per-target care items, hold 0.3 s, path judging, tiers, hints), `Trajectory.kt` (resample / normalize / banded RMS DTW), `Signs.kt` (59 word signs, themes, palm orientations, body spots), `Placement.kt` (D9 upright placement), `FakeHand.kt` (debug hand, layout constants, J / Z paths, `Performer` = synthetic person doing a target, `Sloppy`), `Progress.kt` (Leitner 1/3/7/14/30), `Flow.kt` (every state S00-S16 + SPIKE, timers, two-step confirm, exit) |
+| `domain/` | Pure Kotlin, JVM-tested. `Letters.kt` (asl_letters.json model), `HandFeatures.kt` (hand frame, practice frame, features: flex, spread, thumb tip / hand length, palm normal, pointing, `trackPoint`; left hands mirrored to right-hand terms), `Matcher.kt` (v0.1.3 targets, per-target care items, hold 0.3 s, path judging, tiers, hints), `Trajectory.kt` (resample / normalize / banded RMS DTW), `Signs.kt` (59 word signs, themes, palm orientations, body spots), `Placement.kt` (D9 upright placement), `MainWindow.kt` (v0.1.4: `Tab`, `MainWindowLayout` window estimate / demo spot / label clearance, `LevelHintPlacement`), `LevelGate.kt` (open the window only with a level head), `FakeHand.kt` (debug hand, layout constants, J / Z paths, `Performer` = synthetic person doing a target, `Sloppy`), `Progress.kt` (Leitner 1/3/7/14/30), `Flow.kt` (every state S00-S16 + SPIKE, timers, two-step confirm, exit) |
 | `data/Store.kt` | `files/progress.json`, `files/settings.json` (clear removes progress only) |
 | `platform/` | `HandTracker` (HandTrackingProvider; **not started on the emulator**), `HeadTracker`, `Chime` (system tone, mute in settings) |
-| `scene/SignScene.kt` | Teacher's hand (overlay / beside), watch model (2x, 0.65 m, turntable ring drag, slow, from the front, 3/4 default angle, J/Z trail), hint ring / turn-palm arrow, lazy-follow lesson panel, hand label |
+| `scene/SignScene.kt` | Teacher's hand (overlay / beside), watch model (2x, 0.65 m, turntable ring drag, slow, from the front, 3/4 default angle, J/Z trail), hint ring / turn-palm arrow, hand label, the window chip / level hint; steps the window's level gate; keeps 3D content off the window's estimated rect |
 | `scene/HandView.kt` | One WebXR generic-hand instance: 6 material slots (thumb..pinky, palm) and the baked clip "poses" scrubbed with `setTime` while paused |
-| `ui/` | `SignViewModel`, `SignScreen` (SpatialView + 2 attachment panels, upper limbs Visible), `Copy.kt` (all zh/en copy), `panels/LessonPanel.kt`, `panels/HandLabel.kt` |
+| `ui/` | `SignViewModel` (process-wide `shared()`), `SignScreen` (Stage: SpatialView + hand label + window chip, upper limbs Visible, opens the window), `window/` (`SignWindow` = the system main window, `MainWindowTemplate` = native TabBar, `WindowCtl` = open / recall / lifecycle / level gate), `Copy.kt` (all zh/en copy), `panels/LessonPanel.kt`, `panels/HandLabel.kt` |
 | `debug/DebugCommandReceiver.kt` | QA broadcast (debuggable builds only) |
 | `tools/bake_hands.py` | Builds `assets/hands/hand_{right,left}.glb` and `assets/asl_letters.json` from the WebXR GLBs + the design package (pose solver = port of the sample's hand.preview.js). Re-run after changing letter poses. |
 | `tools/render_check.py` | Blender headless render of baked poses (checks the GLB without a device) |
@@ -105,7 +126,9 @@ SERIAL=<serial> bash tools/dev.sh cmd "<command>"
 | `support <SUPPORTED/DEVICE_NOT_SUPPORTED/WITHOUT_PERMISSION/NOT_IN_FULL_SPACE/clear>` | forces the tracking support state |
 | `state <S00..S15/SPIKE> [variant=a/b/c/confirm] [hold=1]` | jump to a state; `hold=1` freezes short states (S00, S07, S15) |
 | `limbs Visible/Default/Hidden` | upper-limb render mode |
-| `recall` / `dragpanel dx=<px> dy=<px>` | "Bring here" / the same path as dragging the panel's bar (`dump` logs `station=(x,y,z) yaw=`) |
+| `recall` | "Bring here" (settings row): close the window, reopen it once the head is level (`dump` logs the window estimate `station=`) |
+| `window open/close/chip` | v0.1.4: ask for the window (level gate) / close it like the system x / the Stage chip's path |
+| `tab lessons/alphabet/words/settings` | v0.1.4: the same events as the TabBar items |
 | `tap <action>` | panel action without a pointer: tryit nextletter showanswer recall self ready next yes no back home review alphabet settings mute lesson(n=) nextlesson watchagain right left clear confirm slow opposite replay about; v0.1.3: words word(id=) themenext themeprev exit exitcancel exitconfirm (exitconfirm really exits) |
 | `release` / `dump` | clears hold / logs scene + state + progress |
 
@@ -143,6 +166,10 @@ Emulator: set Graphics to High Definition first; take each shot twice (emu conso
 | Word demo (v0.1.3) | `sign THANK_YOU` (one hand, chin); `sign NICE` (two hands); `watch opposite=1`; `watch angle=90` |
 | Word follow (v0.1.3) | `fakeHand sign=HELLO`, `sign HELLO stage=follow` (MATCH within ~1 s); `fakeHand sign=MOTHER pos=0,-0.3,0`, `sign MOTHER stage=follow` (label "手再高一点") |
 | J / Z judged (v0.1.3) | `fakeHand letter=J move=1 slow=2`, `letter J stage=follow` (MATCH); `fakeHand letter=M`, `letter M stage=follow` (MATCH) |
+| Main window (v0.1.4) | first frame: system window + TabBar above it + system dot below; hover the dot (x / drag / -); hover the TabBar (labels); `tab alphabet` / `tab words` / `tab settings` |
+| Window x / chip (v0.1.4) | `window close` (Stage shows "打开面板"), `window chip` (window back in front) |
+| Bring here (v0.1.4) | drag the window away with the system dot, then `recall`: log `ON_DESTROY` -> `LEVEL ok` -> `ON_CREATE` -> `WINDOW estimate` |
+| D9 (v0.1.4) | cold start with the emulator camera pitched -30 / +30 (right-drag 801 fb px = 30 degrees): no window, "Look straight ahead" on the line of sight; level the camera -> the window opens upright |
 | S14 exit (v0.1.3) | `tap settings` (exit row at the bottom); `tap exit` (confirm page); `tap exitcancel`; `tap about` (about replaces the rows) |
 
 ## Device-only (not provable on the emulator)

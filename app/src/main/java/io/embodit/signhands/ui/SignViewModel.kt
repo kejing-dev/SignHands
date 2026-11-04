@@ -3,8 +3,6 @@ package io.embodit.signhands.ui
 import android.app.Application
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import io.embodit.signhands.data.Store
 import io.embodit.signhands.domain.Effect
 import io.embodit.signhands.domain.Flow
@@ -139,11 +137,11 @@ class SignViewModel(application: Application) : AndroidViewModel(application) {
 
     fun showAnswer() = act { showAnswer(now()) }
 
-    /** "Bring here": set by the screen to the scene's recall (panel + demo hand in front of the head, then locked). */
+    /** "Bring here": set by the Stage to the window recall (close + reopen in front of a level head, the demo hand beside it). */
     var onRecall: (() -> Unit)? = null
 
     fun recall() {
-        SignLog.i("PANEL recall")
+        SignLog.i("WINDOW recall asked")
         onRecall?.invoke()
     }
 
@@ -207,8 +205,14 @@ class SignViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
     }
 
-    class Factory(private val application: Application) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T = SignViewModel(application) as T
+    companion object {
+        @Volatile private var instance: SignViewModel? = null
+
+        /**
+         * v0.1.4 (factory native-window-move §3.4): one per process, shared by the Stage and the main window. Not a
+         * container's `viewModel()`: closing the window (system x) must not drop the lesson.
+         */
+        fun shared(application: Application): SignViewModel =
+            instance ?: synchronized(this) { instance ?: SignViewModel(application).also { instance = it } }
     }
 }

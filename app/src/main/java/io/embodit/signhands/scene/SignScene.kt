@@ -2,7 +2,6 @@ package io.embodit.signhands.scene
 
 import android.os.SystemClock
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import com.pico.spatial.core.container.SpatialViewContent
 import com.pico.spatial.core.ecs.CollisionComponent
 import com.pico.spatial.core.ecs.DirectionalLightComponent
@@ -32,6 +31,8 @@ import io.embodit.signhands.domain.ItemKind
 import io.embodit.signhands.domain.J
 import io.embodit.signhands.domain.Judge
 import io.embodit.signhands.domain.Layout
+import io.embodit.signhands.domain.LevelHintPlacement
+import io.embodit.signhands.domain.MainWindowLayout
 import io.embodit.signhands.domain.Letter
 import io.embodit.signhands.domain.Motion
 import io.embodit.signhands.domain.Performer
@@ -46,7 +47,6 @@ import io.embodit.signhands.domain.Support
 import io.embodit.signhands.domain.Tint
 import io.embodit.signhands.domain.UiState
 import io.embodit.signhands.domain.V3
-import io.embodit.signhands.domain.dirOf
 import io.embodit.signhands.domain.faceHead
 import io.embodit.signhands.domain.mirrorX
 import io.embodit.signhands.domain.smoothstep
@@ -57,6 +57,8 @@ import io.embodit.signhands.platform.HeadTracker
 import io.embodit.signhands.platform.SignLog
 import io.embodit.signhands.ui.SignViewModel
 import io.embodit.signhands.ui.theme.SignColors
+import io.embodit.signhands.ui.window.WindowCtl
+import io.embodit.signhands.ui.window.WindowSpike
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -65,24 +67,28 @@ import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.sin
 
-/** Ids of the two attachment panels (declared once in SignScreen with fixed sizes). */
+/**
+ * Ids of the Stage's attachment panels (declared once in SignScreen with fixed sizes): the hand label and the
+ * "打开面板 / 平视前方" chip. v0.1.4: the lesson panel is the system main window, not a Stage panel.
+ */
 object PanelIds {
-    const val LESSON = "lesson"
     const val LABEL = "label"
-    val ALL = listOf(LESSON, LABEL)
+    const val OPEN = "open"
+    val ALL = listOf(LABEL, OPEN)
 }
 
 /**
  * The 3D side of the app, driven once per frame by [SignFrameSystem] (never through Compose): reads the head and
  * the dominant hand, judges the letter (S06 / S09), poses and places the teacher's hand, the watch model and its
- * turntable, the hint ring / turn-palm arrow, the J / Z trail, the lazy-follow lesson panel and the hand label.
+ * turntable, the hint ring / turn-palm arrow, the J / Z trail, the hand label and the window chip; steps the main
+ * window's level gate (D9) and keeps the 3D content out of the window's way (D8).
  * The ViewModel only gets discrete events and a hint key at most 10 times a second.
  */
 class SignScene(private val vm: SignViewModel, private val head: HeadTracker, private val hands: HandTracker, private val scope: CoroutineScope) {
     val panelShown = mutableStateMapOf<String, Boolean>()
 
     /** The debug page (SPIKE) reads this a few times a second. */
-    val spikeText = mutableStateOf("")
+    val spikeText = WindowSpike.text
 
     /** The turntable's collider: drag target. */
     @Volatile var ringHit: Entity? = null
@@ -173,13 +179,11 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     private var userTurn = 0f
     private var lastReplay = -1
 
-    // panels
+    // the main window's estimated pose (the station) and the Stage panels
     private var stationSet = false
     private var stationPos = V3.ZERO
-    /** Heading the panel faces away from (the user stood at stationYaw + 180 when it was placed). */
+    /** Heading the window faces away from (the user stood at stationYaw + 180 when it was opened). */
     private var stationYaw = 0f
-    @Volatile var panelHandle: Entity? = null
-        private set
     private var labelPos: V3? = null
     private var labelFrom = V3.ZERO
     private var labelTo = V3.ZERO
@@ -213,7 +217,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             val holder = Entity()
             runCatching { holder.setName("holder:$id") }
             root.addChild(holder)
-            slots[id] = Slot(id, holder, if (id == PanelIds.LESSON) LESSON_SCALE else LABEL_SCALE).also { it.hide() }
+            slots[id] = Slot(id, holder, if (id == PanelIds.OPEN) OPEN_SCALE else LABEL_SCALE).also { it.hide() }
         }
         bind(attachments)
         queueBuild(root)
@@ -263,8 +267,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         slots.clear()
         panelShown.clear()
         ringHit = null
-        panelHandle = null
         stationSet = false
+        windowEpoch = -1
         runCatching { root?.destroy(true) }
         root = null
         shared.close()
@@ -305,18 +309,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             ringHit = Entity().also {
                 runCatching { it.setName("ringHit") }
                 runCatching { it.components.set(CollisionComponent(listOf(ShapeResource.createBox(Vector3(RING_R * 2.2f, 0.05f, RING_R * 2.2f))), PhysicsMaterialResource())) }
-                it.setLocal(position = STOW)
-                root.addChild(it)
-            }
-        }
-        work += "handle" to {
-            val mat = unlit(shared, SignColors.TeacherWhite, BlendingMode.TRANSPARENT, opacity = 0.75f, twoSided = true, depthWrite = false)
-            val bar = ModelEntity(Meshes.unitCube("panelHandle"), mat)
-            bar.setLocal(scale = V3(HANDLE_W, HANDLE_H, 0.008f))
-            panelHandle = Entity().also {
-                runCatching { it.setName("panelHandle") }
-                runCatching { it.components.set(CollisionComponent(listOf(ShapeResource.createBox(Vector3(HANDLE_W + 0.06f, HANDLE_H + 0.05f, 0.05f))), PhysicsMaterialResource())) }
-                it.addChild(bar)
                 it.setLocal(position = STOW)
                 root.addChild(it)
             }
@@ -374,80 +366,36 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
 
     fun onRingDragEnd() = SignLog.i("WATCH turn=${userTurn.toInt()}")
 
-    /** Which drag is running: the turntable or the panel's bar. */
-    @Volatile var dragging: String? = null
-
-    fun onDragStart(target: Entity?) {
-        dragging = if (target != null && target === panelHandle) "panel" else "ring"
-        SignLog.i("DRAG start ${dragging}")
-    }
-
-    fun onDrag(dxPx: Float, dyPx: Float) {
-        if (dragging == "panel") movePanel(dxPx, dyPx) else onRingDrag(dxPx)
-    }
-
-    fun onDragEnd() {
-        if (dragging == "panel") {
-            // D21: stays where it was let go, and turns to face the user again
-            head.pose()?.let { stationYaw = yawOf(V3(headPosOf(it).x - stationPos.x, 0f, headPosOf(it).z - stationPos.z)) + 180f }
-            SignLog.i("PANEL dropped at ${fmt(stationPos)} yaw=${stationYaw.toInt()}")
-        } else {
-            onRingDragEnd()
-        }
-        dragging = null
-    }
-
-    /** Moves the panel in the plane facing the user: drag right = right, drag up = up (px scaled by distance). */
-    fun movePanel(dxPx: Float, dyPx: Float) {
-        val pose = head.pose() ?: return
-        val hp = headPosOf(pose)
-        val dist = (stationPos - hp).length.coerceAtLeast(0.3f)
-        val k = PX_M * (0.67f + 1.186f * dist)
-        val toPanel = V3(stationPos.x - hp.x, 0f, stationPos.z - hp.z).normalized()
-        val right = toPanel.cross(V3.UP).normalized()
-        stationPos = stationPos + right * (dxPx * k) + V3(0f, -dyPx * k, 0f)
-    }
-
-    /** "Bring here" (D21): panel straight ahead and a little to the non-dominant side, 15 degrees down, 0.9 m, facing you; then locked. */
-    fun recall() {
-        val pose = head.pose() ?: return
-        placeStation(headPosOf(pose), Placement.heading(pose.rotation), vm.state.value.settings.hand)
-        SignLog.i("PANEL recalled to ${fmt(stationPos)} yaw=${stationYaw.toInt()}")
-    }
-
-    /** v0.1.3 (profile D9): every placement goes through [Placement.placeUpright] (heading only, upright). */
-    private fun placeStation(headPos: V3, headYaw: Float, handed: Handed) {
-        val placed = Placement.placeUpright(headPos, headYaw, handed)
+    /**
+     * v0.1.4: the station is where the main window is (estimated: the system opens it straight ahead of a level head,
+     * [MainWindowLayout.estimate]); the demo hand stands beside it. Heading only, upright (D9).
+     */
+    private fun placeStation(headPos: V3, headYaw: Float) {
+        val placed = MainWindowLayout.estimate(headPos, headYaw)
         stationPos = placed.position
         stationYaw = placed.yaw
         stationSet = true
     }
 
-    private fun headPosOf(p: io.embodit.signhands.platform.HeadPose): V3 = p.position
+    private val window: Placement.Placed
+        get() = Placement.Placed(stationPos, stationYaw)
 
-    private var firstPoseMs = -1L
-    private var stationAuto = true
+
+    private var windowEpoch = -1
 
     /**
-     * v0.1.2 (headset: "打开什么都没有"): the panel is placed from the head only once the head pose is real, keeps being
-     * re-placed in front of the head for the first STATION_SETTLE_MS, then locks (D21). Until the user has moved it, a
-     * panel that ends up far away or out of view (> 70 degrees) is put back in front once.
+     * v0.1.2 lesson (headset: "打开什么都没有"): nothing is placed from the head until its pose is real. v0.1.4: until
+     * the window first opens the station follows the head; every time the system (re)creates the window (first open,
+     * "叫回面前", the chip after x) the station is re-estimated from the head at that moment, where the system put it.
      */
-    private fun settleStation(headPos: V3, headYaw: Float, handed: Handed) {
-        val now = SystemClock.elapsedRealtime()
-        if (firstPoseMs < 0) firstPoseMs = now
-        if (!stationSet || (stationAuto && now - firstPoseMs < STATION_SETTLE_MS)) {
-            placeStation(headPos, headYaw, handed)
-            return
-        }
-        if (stationAuto) {
-            val d = stationPos - headPos
-            val off = abs(wrap180(yawOf(V3(d.x, 0f, d.z)) - headYaw))
-            if (d.length > 3f || d.length < 0.3f || off > 70f) {
-                placeStation(headPos, headYaw, handed)
-                SignLog.i("PANEL re-placed: was dist=${"%.2f".format(d.length)} off=${off.toInt()}")
-            }
-            stationAuto = false
+    private fun settleStation(headPos: V3, headYaw: Float) {
+        val epoch = WindowCtl.createdEpoch
+        if (epoch != windowEpoch) {
+            windowEpoch = epoch
+            placeStation(headPos, headYaw)
+            if (epoch > 0) SignLog.i("WINDOW estimate epoch=$epoch at ${fmt(stationPos)} yaw=${stationYaw.toInt()} head=${fmt(headPos)} pitch=${head.pose()?.pitch?.toInt()}")
+        } else if (epoch == 0) {
+            placeStation(headPos, headYaw)
         }
     }
 
@@ -463,12 +411,11 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             val elev = Math.toDegrees(kotlin.math.atan2(d.y.toDouble(), kotlin.math.sqrt((d.x * d.x + d.z * d.z).toDouble()))).toInt()
             return "${fmt(p)} dist=${"%.2f".format(d.length)} dir=${dir.toInt()} elev=$elev"
         }
-        val lessonShown = slots[PanelIds.LESSON]?.shown
         val g = ghost[s.settings.hand]
         val w = watch[s.settings.hand]
         SignLog.i(
             "DIAG t=${diagAt[diagNext] / 1000}s state=${s.screen}/${s.variant} head=${fmt(headPos)} yaw=${headYaw.toInt()} support=${hands.support()} " +
-                "| panel ${rel(stationPos)} shown=$lessonShown bound=${slots[PanelIds.LESSON]?.panel != null} composed=${panelShown[PanelIds.LESSON]} " +
+                "| window ${WindowCtl.panelState} est ${rel(stationPos)} level=${WindowCtl.levelHint} " +
                 "| watch visible=${w?.visible} at ${w?.let { rel(watchCentre()) }} | ghost visible=${g?.visible} | models=${ghost.keys}/${watch.keys}"
         )
         diagNext++
@@ -476,12 +423,13 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
 
     private fun fmt(v: V3) = "(%.2f,%.2f,%.2f)".format(v.x, v.y, v.z)
 
-    /** The demo hand stands to the panel's dominant side, a little closer to the user. */
-    private fun watchCentre(): V3 {
-        val handed = vm.state.value.settings.hand
-        val toUser = dirOf(stationYaw + 180f)
-        val right = dirOf(stationYaw - 90f) * (if (handed == Handed.RIGHT) 1f else -1f)
-        return stationPos + right * WATCH_BESIDE + toUser * WATCH_FORWARD + V3(0f, WATCH_UP, 0f)
+    /** v0.1.4 (D8): the demo hand stands beside the window on the dominant side, nearer than it, never in front of it. */
+    private fun watchCentre(): V3 = MainWindowLayout.demoSpot(window, vm.state.value.settings.hand)
+
+    /** The demo faces the eye it was placed for (it stands to the side now). */
+    private fun demoYaw(): Float {
+        val d = watchCentre() - MainWindowLayout.eyeOf(window)
+        return yawOf(V3(d.x, 0f, d.z))
     }
 
     // ------------------------------------------------------------------------------------------ frame
@@ -493,6 +441,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val now = SystemClock.elapsedRealtime()
         runWork(if (deltaTime.isFinite() && deltaTime > 0f) deltaTime else 1f, now)
         attachments?.let { if (slots.values.any { s -> s.panel == null }) bind(it) }
+        // v0.1.4 (D9): the main window opens only while the head is level; null until the head pose is real
+        WindowCtl.stepGate(now, head.pose()?.pitch)
         val pose = head.pose() ?: return
         val s = vm.state.value
         val handed = s.settings.hand
@@ -578,7 +528,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val sign = s.sign
         if (sign != null) updateSignWatch(s, sign, handed, dt) else updateWatch(s, letter, pose.yaw, headPos, handed, dt)
         updateMarkers(s, letter, joints, headPos)
-        updatePanels(s, pose.yaw, headPos, joints, headPractice, handed, dt)
+        updatePanels(s, pose, headPos, joints, headPractice, handed, dt, now)
 
         if (now - lastTickMs >= TICK_MS) {
             vm.tick(if (lastTickMs == 0L) 0L else now - lastTickMs)
@@ -779,7 +729,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val key = "${l.l}:${s.enteredMs}:${s.course?.index}"
         if (key != watchKey || s.replay != lastReplay) {
             if (key != watchKey) {
-                // v0.1.1 (D21): the demo hand stands at a fixed spot beside the panel (moves only with the panel)
+                // v0.1.1 (D21): the demo hand stands at a fixed spot beside the window (moves when the window is re-opened)
                 userTurn = 0f
                 turn = defaultTurn(l.l)
             }
@@ -799,7 +749,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val step = 180f / 0.4f * dt
         val d = target - turn
         turn = if (abs(d) <= step) target else turn + if (d > 0) step else -step
-        val frameP = PracticeFrame(watchCentre() - Q4.yaw(stationYaw).rotate(Layout.WATCH_SPOT), stationYaw)
+        val dy = demoYaw()
+        val frameP = PracticeFrame(watchCentre() - Q4.yaw(dy).rotate(Layout.WATCH_SPOT), dy)
         val orient = Q4.IDENTITY.slerp(l.orient, smoothstep(u))
         val spin = Q4.yaw(if (handed == Handed.RIGHT) turn else -turn)
         val rotation = frameP.rotation * spin * HandMath.handedOrient(orient, handed)
@@ -876,7 +827,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val d = target - turn
         turn = if (abs(d) <= step) target else turn + if (d > 0) step else -step
         val spin = Q4.yaw(if (handed == Handed.RIGHT) turn else -turn)
-        val frameRot = Q4.yaw(stationYaw) * spin
+        val frameRot = Q4.yaw(demoYaw()) * spin
         val k = SIGN_SCALE
         // the signer's head: the demo's centre of interest (chest height) sits on the watch spot
         val origin = watchCentre() - frameRot.rotate(Layout.sided(SIGN_CENTRE, handed) * k)
@@ -958,12 +909,9 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
 
     // ------------------------------------------------------------------------------------------ panels
 
-    private fun updatePanels(s: UiState, headYaw: Float, headPos: V3, joints: List<V3>?, practice: PracticeFrame, handed: Handed, dt: Float) {
-        // lesson panel (D21): placed once in front of you, then fixed in the world; moves only by its bar or "Bring here"
-        settleStation(headPos, headYaw, handed)
-        val pRot = Q4.yaw(stationYaw)
-        slots[PanelIds.LESSON]?.place(stationPos, pRot)
-        panelHandle?.setLocal(position = stationPos + V3(0f, -PANEL_HALF_H - 0.03f, 0f), rotation = pRot)
+    private fun updatePanels(s: UiState, pose: io.embodit.signhands.platform.HeadPose, headPos: V3, joints: List<V3>?, practice: PracticeFrame, handed: Handed, dt: Float, now: Long) {
+        settleStation(headPos, pose.yaw)
+        placeChip(pose, headPos, now)
 
         // hand label: beside the wrist (non-dominant side 0.12 m, up 0.08 m), moves only when 8 cm off
         val labelShown = s.screen in LABEL_SCREENS || s.wordDone != null
@@ -989,8 +937,48 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             labelT = (labelT + dt / LABEL_MOVE_SEC).coerceAtMost(1f)
             labelPos = labelFrom + (labelTo - labelFrom) * smoothstep(labelT)
         }
-        val lp = labelPos!!
+        // v0.1.4 (D8): never in front of or behind the window (pushed below it or out past its side)
+        val lp = MainWindowLayout.clearOf(headPos, window, labelPos!!, LABEL_R, handed)
         slot.place(lp, faceHead(lp, headPos))
+    }
+
+    private var chipPos: V3? = null
+    private var chipYaw = 0f
+    private var chipWhat = ""
+
+    /**
+     * The Stage's chip: "平视前方" on the line of sight (pitch clamped, upright, re-posed every frame) while an open
+     * waits for a level head; "打开面板" posed once in front of the head (upright) while the window is closed.
+     */
+    private fun placeChip(pose: io.embodit.signhands.platform.HeadPose, headPos: V3, now: Long) {
+        val slot = slots[PanelIds.OPEN] ?: return
+        val what =
+            when {
+                WindowCtl.levelHint -> "level"
+                WindowCtl.chipWanted(now) && vm.state.value.screen != Screen.S00 -> "open"
+                else -> ""
+            }
+        if (what != chipWhat) {
+            chipWhat = what
+            chipPos = null
+            if (what.isNotEmpty()) SignLog.i("CHIP $what pitch=${pose.pitch.toInt()} window=${WindowCtl.panelState}")
+        }
+        when (what) {
+            "level" -> {
+                val h = LevelHintPlacement.place(headPos, pose.yaw, pose.pitch)
+                slot.place(h.position, Q4.yaw(h.yaw))
+            }
+            "open" -> {
+                val c =
+                    chipPos ?: Placement.placeUpright(headPos, pose.yaw, vm.state.value.settings.hand).let {
+                        chipPos = it.position
+                        chipYaw = it.yaw
+                        it.position
+                    }
+                slot.place(c, Q4.yaw(chipYaw))
+            }
+            else -> slot.hide()
+        }
     }
 
     /** `dump`: one log line with the head, the hand and the panels. */
@@ -1007,8 +995,10 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
 
     companion object {
         const val LIGHT_LUX = 1600f
-        const val LESSON_SCALE = 0.9f
         const val LABEL_SCALE = 0.5f
+        const val OPEN_SCALE = 1.0f
+        /** The hand label as a ball for the window check: 260 x 88 dp x 0.5 on the Stage (0.8 mm / dp). */
+        const val LABEL_R = 0.06f
         const val HOLD_AT = 1.5f
         const val MORPH = 1.2f
         const val WATCH_HOLD = 1.5f
@@ -1023,16 +1013,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         const val SUPPORT_WAIT_MS = 3000L
         const val TICK_MS = 100L
         const val HINT_MS = 100L
-        const val STATION_SETTLE_MS = 2000L
         const val DEMO_MS = 4000L
         private val DEMO_LETTERS = listOf("A", "B", "C", "D", "L", "Y")
-        const val PANEL_HALF_H = 0.2f
-        const val HANDLE_W = 0.16f
-        const val HANDLE_H = 0.016f
-        const val PX_M = 0.0004f
-        const val WATCH_BESIDE = 0.42f
-        const val WATCH_FORWARD = 0.22f
-        const val WATCH_UP = 0.06f
         const val LABEL_MOVE_SEC = 0.3f
         const val MOTION_LOOP_MS = 2400L
         /** Word demos: scale of hand and body, default turntable angle, the outline. */

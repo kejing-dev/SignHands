@@ -9,6 +9,21 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import com.pico.spatial.ui.design.PicoTheme
+import com.pico.spatial.ui.design.Text
+import com.pico.spatial.ui.platform.containers.LocalSpatialNavigator
+import com.pico.spatial.ui.platform.containers.SpatialNavigator
+import io.embodit.signhands.ui.panels.PrimaryButton
+import io.embodit.signhands.ui.theme.SignColors
+import io.embodit.signhands.ui.window.WindowCtl
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -23,7 +38,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pico.spatial.ui.foundation.content.SpatialView
 import com.pico.spatial.ui.foundation.dsl.registerSystem
 import com.pico.spatial.ui.foundation.dsl.unregisterSystem
@@ -38,46 +52,51 @@ import io.embodit.signhands.scene.PanelIds
 import io.embodit.signhands.scene.SignFrameSystem
 import io.embodit.signhands.scene.SignScene
 import io.embodit.signhands.ui.panels.HandLabel
-import io.embodit.signhands.ui.panels.LessonPanel
 import io.embodit.signhands.ui.theme.SignTheme
 
-/** Sizes of the two attachment panels, dp (design `panels[]`; the lesson panel at its max height). */
+/** Sizes of the Stage's two small attachment panels, dp (the lesson panel is the system window, v0.1.4). */
 object PanelSizes {
-    val LESSON = IntSize(460, 380)
     val LABEL = IntSize(260, 88)
+    val OPEN = IntSize(300, 120)
 }
 
 /**
- * The Stage content: one full-size SpatialView carrying the 3D scene and both panels. Panels are declared once with a
- * fixed size; the scene parents them under its holders and moves them. The turntable drag is the only 3D gesture
- * (the teacher's hand and the watch model carry no input, so a pinch made while signing never selects them).
+ * The Stage content: one full-size SpatialView carrying the 3D scene, the hand label and the "打开面板 / 平视前方" chip.
+ * v0.1.4 (profile D8 / D21): the lesson panel is the system main window ([SignWindow]), opened from here once the head
+ * is level (§7.9); the system moves / closes it, the app has no drag code for it. The turntable drag is the only 3D
+ * gesture (the teacher's hand and the watch model carry no input, so a pinch made while signing never selects them).
  */
 @Composable
 fun SignScreen() {
     val context = LocalContext.current
     val application = context.applicationContext as Application
-    val vm: SignViewModel = viewModel(factory = SignViewModel.Factory(application))
+    val vm = remember(application) { SignViewModel.shared(application) }
     val state by vm.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val scene = remember(vm) { SignScene(vm, SignGraph.head, SignGraph.hands, scope) }
+    val navigator = LocalSpatialNavigator.current
 
-    DisposableEffect(scene) {
+    DisposableEffect(scene, navigator) {
         registerSystem<SignFrameSystem>()
+        WindowCtl.navigator = navigator
         DebugHost.vm = vm
         DebugHost.scene = scene
-        vm.onRecall = { scene.recall() }
-        vm.onExit = { exitApp(context, scene) }
+        vm.onRecall = { WindowCtl.recall("bring here") }
+        vm.onExit = { exitApp(context, scene, navigator) }
         SignLog.i("STAGE enter")
         onDispose {
             DebugHost.vm = null
             DebugHost.scene = null
             vm.onRecall = null
             vm.onExit = null
+            if (WindowCtl.navigator === navigator) WindowCtl.navigator = null
             unregisterSystem<SignFrameSystem>()
             scene.detach()
             SignLog.i("STAGE disposed")
         }
     }
+    // the main window opens once the head is level (D9, factory native-window-move §7.9)
+    LaunchedEffect(Unit) { WindowCtl.openWindow("stage") }
 
     // real hands stay visible in passthrough under the teacher's hand (design container.upperLimbRenderMode)
     val limbs = LocalStageUpperLimbRenderModelManager.current
@@ -94,27 +113,42 @@ fun SignScreen() {
                 Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
+                        // the watch model's turntable (D21 allows the 3D object's own drag); nothing else on the Stage drags
                         detectSpatialDragGesture(
                             context = context,
-                            targetedToEntity = TargetEntity.any { e -> scene.ringHit?.let { it === e } == true || scene.panelHandle?.let { it === e } == true },
-                            onDragStart = { _, value -> scene.onDragStart(value.targetEntity) },
-                            onDragEnd = { _ -> scene.onDragEnd() },
-                            onDragCancel = { _ -> scene.onDragEnd() },
+                            targetedToEntity = TargetEntity.any { e -> scene.ringHit?.let { it === e } == true },
+                            onDragEnd = { _ -> scene.onRingDragEnd() },
+                            onDragCancel = { _ -> scene.onRingDragEnd() },
                         ) { value ->
-                            scene.onDrag(value.dragAmount.x, value.dragAmount.y)
+                            scene.onRingDrag(value.dragAmount.x)
                         }
                     },
             attachments = {
-                AttachmentPanel(PanelIds.LESSON) {
-                    Gate(scene, PanelIds.LESSON, PanelSizes.LESSON) { LessonPanel(state, vm, vm.book, scene.spikeText.value) }
-                }
                 AttachmentPanel(PanelIds.LABEL) {
                     Gate(scene, PanelIds.LABEL, PanelSizes.LABEL) { HandLabel(state, vm.book) }
+                }
+                AttachmentPanel(PanelIds.OPEN) {
+                    Gate(scene, PanelIds.OPEN, PanelSizes.OPEN) { OpenChip(copy) }
                 }
             },
             update = { _, attachments -> scene.bind(attachments) },
             initial = { content, attachments -> scene.attach(content, attachments) },
         )
+    }
+}
+
+/**
+ * The Stage's one chip: "平视前方 / 面板就出来" while the window waits for a level head, else "打开面板" while the window
+ * is closed (system x) or minimised. The scene shows it only then.
+ */
+@Composable
+private fun OpenChip(copy: Copy) {
+    Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(Color(0xCC14121A)), contentAlignment = Alignment.Center) {
+        if (WindowCtl.levelHint) {
+            Text(copy.levelHint, style = PicoTheme.typography.titleMedium, color = SignColors.LabelInk, textAlign = TextAlign.Center, maxLines = 2)
+        } else {
+            PrimaryButton(copy.openPanel, { WindowCtl.reopen("chip") })
+        }
     }
 }
 
@@ -129,11 +163,22 @@ private fun Gate(scene: SignScene, id: String, size: IntSize, content: @Composab
 
 /**
  * v0.1.3 (profile D26): settings > Exit, confirmed. Tracking and the scene are released first (the hand and head
- * providers stop, entities and panels go), then every task of the app is finished and removed, then the process ends.
+ * providers stop, entities and panels go), v0.1.4 the window and the Stage are closed, then every task of the app is
+ * finished and removed, then the process ends.
  */
-private fun exitApp(context: Context, scene: SignScene) {
-    SignLog.i("EXIT confirmed: releasing tracking and the scene")
+private fun exitApp(context: Context, scene: SignScene, navigator: SpatialNavigator) {
+    SignLog.i("EXIT confirmed: releasing tracking and the scene, closing the window and the Stage")
     runCatching { scene.detach() }.onFailure { SignLog.e("EXIT detach failed: $it", it) }
+    // v0.1.4: the window would otherwise outlive the Stage in the Shared Space (native-window-move §7.7)
+    WindowCtl.closeForQuit()
+    // a scope of its own: closing the Stage disposes the Stage's composition (and its scope) half-way
+    MainScope().launch {
+        runCatching { navigator.closeStage() }.onFailure { SignLog.w("EXIT closeStage: $it") }
+        finishTasks(context)
+    }
+}
+
+private fun finishTasks(context: Context) {
     var activity: Context? = context
     while (activity is ContextWrapper && activity !is Activity) activity = activity.baseContext
     runCatching { (activity as? Activity)?.finishAndRemoveTask() }

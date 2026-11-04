@@ -26,6 +26,9 @@ import io.embodit.signhands.platform.SignLog
 import io.embodit.signhands.scene.SignScene
 import io.embodit.signhands.ui.SignViewModel
 import io.embodit.signhands.ui.limbModeOf
+import io.embodit.signhands.ui.window.PANEL_ID
+import io.embodit.signhands.ui.window.PANEL_TAG
+import io.embodit.signhands.ui.window.WindowCtl
 import java.util.Locale
 
 /**
@@ -192,13 +195,25 @@ object DebugHost {
                         if (screen == Screen.S02) debugSet(state.copy(lostFrom = if (variant == "b") Screen.S06 else Screen.S06))
                     }
                 }
-                "recall" -> scene.recall()
-                "dragpanel" -> {
-                    // dragpanel dx=<px> dy=<px>: the same path as pinching the bar under the panel
-                    scene.onDragStart(scene.panelHandle)
-                    scene.onDrag(args["dx"]?.toFloatOrNull() ?: 0f, args["dy"]?.toFloatOrNull() ?: 0f)
-                    scene.onDragEnd()
-                }
+                // v0.1.4: the same path as settings > "叫回面前" (close the window, reopen it once the head is level)
+                "recall" -> vm.recall()
+                "window" ->
+                    // window open / close / recall / chip: the system window by the same calls the app makes
+                    when (bare.firstOrNull()?.lowercase(Locale.US)) {
+                        "open" -> WindowCtl.openWindow("debug")
+                        "close" -> WindowCtl.navigator?.closeWindowContainer(PANEL_ID, PANEL_TAG)
+                        "chip" -> WindowCtl.reopen("debug chip")
+                        else -> vm.recall()
+                    }
+                "tab" ->
+                    // tab lessons / alphabet / words / settings: the same events as the TabBar items
+                    when (bare.firstOrNull()?.lowercase(Locale.US)) {
+                        "lessons" -> vm.home()
+                        "alphabet" -> vm.openAlphabet()
+                        "words" -> vm.openWords()
+                        "settings" -> vm.openSettings()
+                        else -> Unit
+                    }
                 "limbs" -> limbModeOf(bare.firstOrNull())?.let { limbMode.value = it }
                 "dump" -> {
                     SignLog.i(scene.dumpLine())

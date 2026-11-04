@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,8 +35,6 @@ import com.pico.spatial.ui.design.SegmentControl
 import com.pico.spatial.ui.design.SegmentControlDefaults
 import com.pico.spatial.ui.design.SegmentItem
 import com.pico.spatial.ui.design.Text
-import com.pico.spatial.ui.foundation.material.backgroundMaterial
-import com.pico.spatial.ui.platform.Material
 import io.embodit.signhands.R
 import io.embodit.signhands.domain.CourseMode
 import io.embodit.signhands.domain.GhostMode
@@ -58,13 +55,6 @@ import io.embodit.signhands.ui.SignViewModel
 import io.embodit.signhands.ui.theme.LocalCopy
 import io.embodit.signhands.ui.theme.SignColors
 
-private val PanelShape = RoundedCornerShape(28.dp)
-
-/** Glass root of the lesson panel: clipped to its shape, system Material.Regular. */
-@Composable
-private fun GlassRoot(content: @Composable () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize().clip(PanelShape).backgroundMaterial(enable = true, style = Material.Regular)) { content() }
-}
 
 @Composable
 fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
@@ -99,15 +89,15 @@ private fun RoundIcon(icon: Int, description: String, onClick: () -> Unit) {
 }
 
 /**
- * The lesson panel (440 x 380 dp, design `panels.lesson`): a title row (back, title, mute, settings on the
- * home page only), then the page of the current state. Settings and the clear confirmation replace the page
- * (no pop-up in a Stage). At most one primary + one secondary button + two toggles + two lines at a time.
+ * The lesson panel, v0.1.4 the content of the system main window (design `panels.lesson`; the window draws the glass
+ * and the 32 dp corners, the TabBar switches 课程 / 字母表 / 常用词 / 设置): a title row (back, title, mute), then the
+ * page of the current state. The clear and exit confirmations replace the settings page (no second panel).
  */
 @Composable
 fun LessonPanel(state: UiState, vm: SignViewModel, book: LetterBook, spike: String) {
     val c = LocalCopy.current
-    GlassRoot {
-        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             TitleRow(state, vm, c)
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 when (state.screen) {
@@ -144,11 +134,6 @@ private fun TitleRow(state: UiState, vm: SignViewModel, c: Copy) {
         Text(title(state, c), style = PicoTheme.typography.titleMedium, maxLines = 1)
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { if (s in DOT_SCREENS) Dots(state) }
         if (muteShown) RoundIcon(if (state.settings.muted) R.drawable.ic_sound_off else R.drawable.ic_sound_on, if (state.settings.muted) c.unmute else c.mute) { vm.toggleMute() }
-        if (s == Screen.S04) RoundIcon(R.drawable.ic_settings, c.settings) { vm.openSettings() }
-        // D21: the panel stays where it was put; this brings it (and the demo hand) in front of you
-        Button(onClick = { vm.recall() }, colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary)) {
-            Text(c.recall, maxLines = 1, style = PicoTheme.typography.labelLarge)
-        }
     }
 }
 
@@ -613,6 +598,8 @@ private fun SettingsPage(state: UiState, vm: SignViewModel, c: Copy) {
             }
         }
         ButtonsRow {
+            // v0.1.4 (D21): the system moves the window; this puts it back in front of you, the demo hand beside it
+            SecondaryButton(c.recall, { vm.recall() }, Modifier.weight(1f))
             SecondaryButton(c.clearProgress, { vm.askClear() }, Modifier.weight(1f))
             SecondaryButton(c.about, { vm.toggleAbout() }, Modifier.weight(1f), selected = state.aboutOpen)
         }
