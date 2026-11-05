@@ -124,8 +124,12 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         var shown = false
         var shownFrame = 0L
 
+        /** Where it was last placed (`dump`). */
+        var at: V3? = null
+
         fun place(position: V3, rotation: Q4) {
             holder.setLocal(position = position, rotation = rotation, scale = V3(scale, scale, scale))
+            at = position
             if (!shown) {
                 shown = true
                 shownFrame = frame
@@ -335,7 +339,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             }
         }
         work += "trail" to {
-            val dot = shared.keep(MeshResource.createSphere(SphereOption(1f).setName("trailDot")))
+            val dot = shared.keep(MeshResource.createSphere(SphereOption(1f).setName("trailDot"))) // gate:allow geometry J / Z / word path trail: 4 mm abstract dots, not an object
             val mat: UnlitMaterial = unlit(shared, SignColors.TrailAmber)
             repeat(TRAIL_DOTS) {
                 trail += ModelEntity(dot, mat).also { e ->
@@ -937,7 +941,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             labelT = (labelT + dt / LABEL_MOVE_SEC).coerceAtMost(1f)
             labelPos = labelFrom + (labelTo - labelFrom) * smoothstep(labelT)
         }
-        // v0.1.4 (D8): never in front of or behind the window (pushed below it or out past its side)
+        // v0.1.4 (D8): never in front of or behind the window; v0.1.5: nor its control strip (out past its side or above it)
         val lp = MainWindowLayout.clearOf(headPos, window, labelPos!!, LABEL_R, handed)
         slot.place(lp, faceHead(lp, headPos))
     }
@@ -989,7 +993,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         sb.append(" handLen=${"%.3f".format(handLength)} visible=$reportedVisible fake=$fake models=${ghost.keys}/${watch.keys}")
         judge?.let { sb.append(" judge=${it.target.key} tier=${it.tier} move=${"%.2f".format(it.moveRatio)} hint=${it.moveHint}") }
         verdict?.let { v -> sb.append(" verdict pass=${v.pass} ").append(v.items.joinToString(" ") { "${it.item.key}=${"%.2f".format(it.ratio)}${if (it.inside) "" else "!"}" }) }
-        for (slot in slots.values) sb.append(" | ").append(slot.id).append(" shown=").append(slot.shown).append(" bound=").append(slot.panel != null)
+        for (slot in slots.values) sb.append(" | ").append(slot.id).append(" shown=").append(slot.shown).append(" bound=").append(slot.panel != null).append(" at=").append(slot.at?.let { fmt(it) })
         return sb.toString()
     }
 

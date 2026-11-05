@@ -1,8 +1,18 @@
 # 手语老师 Sign Hands — project notes for agents
 
-PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.1.4.
+PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.1.5.
 A translucent teacher's hand sits on your own hand and forms the 26 ASL letters; learned letters come back on a
 Leitner schedule. v0.1.3 adds 59 everyday ASL word signs in 9 themes.
+
+**v0.1.5 (QA #3 q3-1, profile D8 addendum, factory `prompts/snippets/native-window-move.md` §2)**
+- The hand label keeps off the window as the system draws it (`MainWindowLayout.footprint`): measured on the emulator
+  the window is 2.2x the converter's 0.0008 m/dp (`DRAWN_DP_M = 0.00173` at 1.75 m), plus the system control strip
+  under it (dot / x / handle / -, `CONTROLS_DP = 80`) and the TabBar over it (`TABBAR_DP = 96`), plus parallax for
+  either eye (the label is ~0.38 m away). `clearOf` never pushes the label down: a label already beside the window goes
+  further out that side, one in front of it goes past the non-dominant edge or above the TabBar (the shorter move).
+  S02 with no hand: the label now sits beside the window on the non-dominant side, not on the dot.
+- The demo hand's check (`overlaps`) still uses the converter size (QA #3 passed it; not touched).
+- `dump` logs every Stage panel's last placed position (`label ... at=(x,y,z)`).
 
 **v0.1.4 (user, 2026-11-02: "UI 窗口下面那个拖动的 bar，别用3D 模型做那么丑的…用那里面带的原生效果的" / "合并到一个模版" /
 "用原生 tab bar 组件"; on the headset with v0.1.3, 2026-11-03, twice: "把 UI 的 tab bar 用 spatial UI 的原生组件做" /

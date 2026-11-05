@@ -64,6 +64,26 @@ object MainWindowLayout {
     /** Reach of the demo round its centre: the 2x letter hand ~0.22 m, a word demo (head ring + shoulders) ~0.3 m. */
     const val DEMO_REACH = 0.3f
 
+    /**
+     * v0.1.5 (QA #3 q3-1): the window as the system draws it. The converter says [DP_M], but on the emulator a window
+     * opened 1.75 m ahead of a level head spans 455 x 364 px at 741 px per unit tangent (the hand label and the demo hand
+     * fit that scale, front and head 30 degrees left agree): 0.00173 m per dp at [DIST], 2.2x the converter. The demo
+     * hand's check keeps [DP_M] (QA #3 passed it); the hand label's uses this.
+     */
+    const val DRAWN_DP_M = 0.00173f
+
+    /**
+     * The system's control strip under the window (the dot, opening into x / drag handle / -), window-wide (profile D8
+     * addendum, native-window-move §2: about 60 dp). The dot's lower edge was measured 77 dp under the edge.
+     */
+    const val CONTROLS_DP = 80f
+
+    /** The SpatialUI TabBar capsule over the window (its top measured 88 dp above the edge), window-wide. */
+    const val TABBAR_DP = 96f
+
+    /** Half the distance between the eyes: a near label shifts against the far window by this over each depth. */
+    const val EYE_HALF_IPD = 0.032f
+
     /** Angular gap kept between 3D content and the window's edge. */
     const val MARGIN_DEG = 3f
 
@@ -90,13 +110,24 @@ object MainWindowLayout {
         return View(a.dot(right) / depth, a.y / depth, depth)
     }
 
-    /** The window's extent as tangents seen from [eye]: (left, right, bottom, top); null when it is not in front. */
-    private fun extent(eye: V3, w: Placement.Placed): FloatArray? {
+    /** A window-sized rect seen from [eye]: (left, right, bottom, top, depth); null when the window is not in front. */
+    private fun rect(eye: V3, w: Placement.Placed, hw: Float, hh: Float, below: Float, above: Float): FloatArray? {
         val c = view(eye, w, w.position) ?: return null
-        val hw = halfW / c.depth
-        val hh = halfH / c.depth
-        return floatArrayOf(c.x - hw, c.x + hw, c.y - hh, c.y + hh)
+        return floatArrayOf(c.x - hw / c.depth, c.x + hw / c.depth, c.y - (hh + below) / c.depth, c.y + (hh + above) / c.depth, c.depth)
     }
+
+    /** The window's extent as tangents seen from [eye] ([DP_M]): (left, right, bottom, top, depth). */
+    private fun extent(eye: V3, w: Placement.Placed): FloatArray? = rect(eye, w, halfW, halfH, 0f, 0f)
+
+    /**
+     * v0.1.5: what the hand label keeps off, as tangents seen from [eye]: the window as drawn ([DRAWN_DP_M]) with the
+     * control strip under it and the TabBar over it, (left, right, bottom, top, depth).
+     */
+    fun footprint(eye: V3, w: Placement.Placed): FloatArray? =
+        rect(eye, w, W_DP * DRAWN_DP_M / 2f, H_DP * DRAWN_DP_M / 2f, CONTROLS_DP * DRAWN_DP_M, TABBAR_DP * DRAWN_DP_M)
+
+    /** Tangents (right, up) of [p] seen from [eye] in the window's frame, as [footprint] uses them; null behind the eye. */
+    fun tangents(eye: V3, w: Placement.Placed, p: V3): FloatArray? = view(eye, w, p)?.let { floatArrayOf(it.x, it.y) }
 
     /** Is a ball of radius [r] at [p] in front of or behind the window, seen from [eye] (with [MARGIN_DEG])? */
     fun overlaps(eye: V3, w: Placement.Placed, p: V3, r: Float): Boolean {
@@ -106,19 +137,36 @@ object MainWindowLayout {
         return v.x + k > e[0] && v.x - k < e[1] && v.y + k > e[2] && v.y - k < e[3]
     }
 
+    /** How far either eye sees a point at [depth] shift sideways against the window at [windowDepth], as a tangent. */
+    private fun parallax(depth: Float, windowDepth: Float): Float = EYE_HALF_IPD * abs(1f / depth - 1f / windowDepth)
+
+    /** Is the hand label (ball of radius [r] at [p]) on the [footprint] for either eye (with [MARGIN_DEG])? */
+    fun labelOverlaps(eye: V3, w: Placement.Placed, p: V3, r: Float): Boolean {
+        val e = footprint(eye, w) ?: return false
+        val v = view(eye, w, p) ?: return false
+        val ky = r / v.depth + tan(MARGIN_DEG.toRad())
+        val kx = ky + parallax(v.depth, e[4])
+        return v.x + kx > e[0] && v.x - kx < e[1] && v.y + ky > e[2] && v.y - ky < e[3]
+    }
+
     /**
-     * The hand label at [p] (ball of radius [r]) moved off the window seen from [eye]: below its bottom edge or out past
-     * its non-dominant edge, whichever is the shorter move, at the same depth. Unchanged when it does not overlap.
+     * The hand label at [p] (ball of radius [r]) moved off the [footprint] seen from [eye], at the same depth. Already
+     * beside the window (its centre past a side edge): further out that side. Otherwise out past the non-dominant edge
+     * (the teacher's hand is on the dominant side) or above the TabBar, whichever is the shorter move. Never down: under
+     * the window is the system's dot (v0.1.5, QA #3 q3-1). Unchanged when it does not overlap.
      */
     fun clearOf(eye: V3, w: Placement.Placed, p: V3, r: Float, handed: Handed): V3 {
-        if (!overlaps(eye, w, p, r)) return p
-        val e = extent(eye, w) ?: return p
+        if (!labelOverlaps(eye, w, p, r)) return p
+        val e = footprint(eye, w) ?: return p
         val v = view(eye, w, p) ?: return p
-        val k = r / v.depth + tan((MARGIN_DEG + 0.5f).toRad())
-        val dy = (e[2] - k) - v.y // < 0: down
-        val dx = if (handed == Handed.RIGHT) (e[0] - k) - v.x else (e[1] + k) - v.x
+        val ky = r / v.depth + tan((MARGIN_DEG + 0.5f).toRad())
+        val kx = ky + parallax(v.depth, e[4])
         val right = dirOf(w.yaw - 90f)
-        return if (abs(dy) <= abs(dx)) p + V3(0f, dy * v.depth, 0f) else p + right * (dx * v.depth)
+        if (v.x < e[0]) return p + right * (((e[0] - kx) - v.x) * v.depth)
+        if (v.x > e[1]) return p + right * (((e[1] + kx) - v.x) * v.depth)
+        val dy = (e[3] + ky) - v.y // > 0: up
+        val dx = if (handed == Handed.RIGHT) (e[0] - kx) - v.x else (e[1] + kx) - v.x
+        return if (dy <= abs(dx)) p + V3(0f, dy * v.depth, 0f) else p + right * (dx * v.depth)
     }
 }
 
