@@ -250,6 +250,7 @@ object DebugHost {
                         "opposite" -> vm.toggleOpposite()
                         "replay" -> vm.replay()
                         "about" -> vm.toggleAbout()
+                        "howto" -> vm.toggleHowTo()
                         "words" -> vm.openWords()
                         "word" -> vm.openSign((args["id"] ?: "HELLO").uppercase(Locale.US))
                         "themenext" -> vm.setTheme(Theme.entries[(vm.state.value.theme.ordinal + 1) % Theme.entries.size])

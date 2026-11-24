@@ -31,7 +31,6 @@ import io.embodit.signhands.domain.ItemKind
 import io.embodit.signhands.domain.J
 import io.embodit.signhands.domain.Judge
 import io.embodit.signhands.domain.Layout
-import io.embodit.signhands.domain.LevelHintPlacement
 import io.embodit.signhands.domain.MainWindowLayout
 import io.embodit.signhands.domain.Letter
 import io.embodit.signhands.domain.Motion
@@ -312,7 +311,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             }
             ringHit = Entity().also {
                 runCatching { it.setName("ringHit") }
-                runCatching { it.components.set(CollisionComponent(listOf(ShapeResource.createBox(Vector3(RING_R * 2.2f, 0.05f, RING_R * 2.2f))), PhysicsMaterialResource())) }
+                runCatching { it.components.set(CollisionComponent(listOf(shared.keep(ShapeResource.createBox(Vector3(RING_R * 2.2f, 0.05f, RING_R * 2.2f)))), PhysicsMaterialResource())) }
                 it.setLocal(position = STOW)
                 root.addChild(it)
             }
@@ -364,11 +363,21 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     // ---------------------------------------------------------------------------------------- gestures
 
     /** Turntable drag: px of horizontal drag -> degrees (about 6 degrees per cm at arm's length). */
-    fun onRingDrag(dxPx: Float) {
-        userTurn += dxPx * DEG_PER_PX
+    private var turnAtDragStart: Float? = null
+
+    /**
+     * v0.1.6 (gate drag-delta): [totalDxPx] is the drag's total sideways travel since it started (SDK 6.1.9 hands out
+     * per-event increments; SignScreen adds them up), so the turn is the start angle plus the total.
+     */
+    fun onRingDrag(totalDxPx: Float) {
+        val start = turnAtDragStart ?: userTurn.also { turnAtDragStart = it }
+        userTurn = start + totalDxPx * DEG_PER_PX
     }
 
-    fun onRingDragEnd() = SignLog.i("WATCH turn=${userTurn.toInt()}")
+    fun onRingDragEnd() {
+        turnAtDragStart = null
+        SignLog.i("WATCH turn=${userTurn.toInt()}")
+    }
 
     /**
      * v0.1.4: the station is where the main window is (estimated: the system opens it straight ahead of a level head,
@@ -419,7 +428,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val w = watch[s.settings.hand]
         SignLog.i(
             "DIAG t=${diagAt[diagNext] / 1000}s state=${s.screen}/${s.variant} head=${fmt(headPos)} yaw=${headYaw.toInt()} support=${hands.support()} " +
-                "| window ${WindowCtl.panelState} est ${rel(stationPos)} level=${WindowCtl.levelHint} " +
+                "| window ${WindowCtl.panelState} est ${rel(stationPos)} " +
                 "| watch visible=${w?.visible} at ${w?.let { rel(watchCentre()) }} | ghost visible=${g?.visible} | models=${ghost.keys}/${watch.keys}"
         )
         diagNext++
@@ -445,8 +454,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val now = SystemClock.elapsedRealtime()
         runWork(if (deltaTime.isFinite() && deltaTime > 0f) deltaTime else 1f, now)
         attachments?.let { if (slots.values.any { s -> s.panel == null }) bind(it) }
-        // v0.1.4 (D9): the main window opens only while the head is level; null until the head pose is real
-        WindowCtl.stepGate(now, head.pose()?.pitch)
         val pose = head.pose() ?: return
         val s = vm.state.value
         val handed = s.settings.hand
@@ -951,14 +958,13 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     private var chipWhat = ""
 
     /**
-     * The Stage's chip: "平视前方" on the line of sight (pitch clamped, upright, re-posed every frame) while an open
-     * waits for a level head; "打开面板" posed once in front of the head (upright) while the window is closed.
+     * The Stage's chip (v0.1.6, profile D10: a button opens the panel, never the head's pitch): "打开面板" posed once in
+     * front of the head (upright) while the window is closed or minimised.
      */
     private fun placeChip(pose: io.embodit.signhands.platform.HeadPose, headPos: V3, now: Long) {
         val slot = slots[PanelIds.OPEN] ?: return
         val what =
             when {
-                WindowCtl.levelHint -> "level"
                 WindowCtl.chipWanted(now) && vm.state.value.screen != Screen.S00 -> "open"
                 else -> ""
             }
@@ -968,10 +974,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             if (what.isNotEmpty()) SignLog.i("CHIP $what pitch=${pose.pitch.toInt()} window=${WindowCtl.panelState}")
         }
         when (what) {
-            "level" -> {
-                val h = LevelHintPlacement.place(headPos, pose.yaw, pose.pitch)
-                slot.place(h.position, Q4.yaw(h.yaw))
-            }
             "open" -> {
                 val c =
                     chipPos ?: Placement.placeUpright(headPos, pose.yaw, vm.state.value.settings.hand).let {

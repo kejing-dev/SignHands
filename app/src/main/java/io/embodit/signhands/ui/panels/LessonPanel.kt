@@ -54,11 +54,15 @@ import io.embodit.signhands.ui.Copy
 import io.embodit.signhands.ui.SignViewModel
 import io.embodit.signhands.ui.theme.LocalCopy
 import io.embodit.signhands.ui.theme.SignColors
+import android.content.res.Configuration
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import java.util.Locale
 
 
 @Composable
 fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    Button(onClick = onClick, enabled = enabled, modifier = modifier, colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonPrimary, contentColor = SignColors.OnButtonPrimary)) {
+    Button(onClick = onClick, enabled = enabled, modifier = modifier.then(NoFocus), colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonPrimary, contentColor = SignColors.OnButtonPrimary)) {
         Text(label, maxLines = 1)
     }
 }
@@ -66,7 +70,7 @@ fun PrimaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modif
 @Composable
 fun SecondaryButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false) {
     val c = if (selected) ButtonDefaults.buttonColors(containerColor = SignColors.Selected, contentColor = SignColors.OnSelected) else ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary)
-    Button(onClick = onClick, modifier = modifier, colors = c) { Text(label, maxLines = 1) }
+    Button(onClick = onClick, modifier = modifier.then(NoFocus), colors = c) { Text(label, maxLines = 1) }
 }
 
 /** Unselected segments in dark ink on the light glass (QA q1: the default grey measured ~3:1), selected = night pill. */
@@ -83,7 +87,7 @@ private fun iconColors() = IconButtonDefaults.iconButtonColors(containerColor = 
 
 @Composable
 private fun RoundIcon(icon: Int, description: String, onClick: () -> Unit) {
-    IconButton(onClick = onClick, colors = iconColors(), modifier = Modifier.size(48.dp)) {
+    IconButton(onClick = onClick, colors = iconColors(), modifier = Modifier.size(48.dp).then(NoFocus)) {
         Icon(painter = painterResource(icon), contentDescription = description, modifier = Modifier.size(22.dp))
     }
 }
@@ -129,7 +133,7 @@ private fun TitleRow(state: UiState, vm: SignViewModel, c: Copy) {
     val s = state.screen
     val backShown = s !in setOf(Screen.S00, Screen.S01, Screen.S03, Screen.S04, Screen.S11, Screen.S12, Screen.S15)
     val muteShown = s in setOf(Screen.S04, Screen.S05, Screen.S06, Screen.S07, Screen.S08, Screen.S09, Screen.S10, Screen.S11, Screen.S12, Screen.S02)
-    Row(modifier = Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(modifier = Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         if (backShown) RoundIcon(R.drawable.ic_back, c.back) { vm.back() }
         Text(title(state, c), style = PicoTheme.typography.titleMedium, maxLines = 1)
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { if (s in DOT_SCREENS) Dots(state) }
@@ -182,14 +186,14 @@ private fun Small(text: String, color: Color = PicoTheme.colorScheme.labelSecond
 
 @Composable
 private fun ButtonsRow(content: @Composable () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) { content() }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) { content() }
 }
 
 // ------------------------------------------------------------------------------------------- S01 - S03
 
 @Composable
 private fun Welcome(vm: SignViewModel, c: Copy) {
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(c.welcome, style = PicoTheme.typography.bodyLargeMultiline, maxLines = 3)
         Small(c.notChinese)
         Spacer(modifier = Modifier.weight(1f))
@@ -204,7 +208,7 @@ private fun Welcome(vm: SignViewModel, c: Copy) {
 @Composable
 private fun HandNeeded(state: UiState, vm: SignViewModel, c: Copy) {
     val fromQuiz = state.lostFrom == Screen.S09 || state.lostFrom == Screen.S10
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(c.raiseHand(state.settings.hand, state.variant == "b"), style = PicoTheme.typography.bodyLargeMultiline, maxLines = 3)
         Spacer(modifier = Modifier.weight(1f))
         ButtonsRow {
@@ -215,7 +219,7 @@ private fun HandNeeded(state: UiState, vm: SignViewModel, c: Copy) {
 
 @Composable
 private fun TrackingOff(state: UiState, vm: SignViewModel, c: Copy) {
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(if (state.variant == "b") c.trackingOffB else c.trackingOffA, style = PicoTheme.typography.bodyLargeMultiline, maxLines = 3)
         Text(c.trackingStatus(state.support), style = PicoTheme.typography.bodyMedium, color = SignColors.Alert, maxLines = 2)
         Small(c.demoHint)
@@ -233,17 +237,17 @@ private fun TrackingOff(state: UiState, vm: SignViewModel, c: Copy) {
 private fun Home(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
     val due = state.progress.due(vm.today).size
     val next = (1..6).firstOrNull { state.progress.lessons[it]?.done != true } ?: 0
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (state.watchOnly) {
             Small(c.trackingStatus(state.support))
-            Button(onClick = { vm.recheck(io.embodit.signhands.platform.SignGraph.hands.support()) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary)) {
+            Button(onClick = { vm.recheck(io.embodit.signhands.platform.SignGraph.hands.support()) }, modifier = Modifier.fillMaxWidth().then(NoFocus), colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary)) {
                 Text(c.watchOnlyBanner, maxLines = 1)
             }
         }
         if (due > 0 && !state.watchOnly) PrimaryButton(c.reviewToday(due.coerceAtMost(Srs.REVIEW_MAX)), { vm.startReview() }, Modifier.fillMaxWidth())
         else Box(modifier = Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.CenterStart) { Small(c.noReview) }
         for (row in 0 until 3) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 for (col in 0 until 2) {
                     val n = row * 2 + col + 1
                     LessonCell(n, state, book, c, highlighted = n == next, modifier = Modifier.weight(1f)) { vm.openLesson(n) }
@@ -251,7 +255,7 @@ private fun Home(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
             }
         }
         Spacer(modifier = Modifier.weight(1f))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             SecondaryButton(c.alphabet, { vm.openAlphabet() }, Modifier.weight(1f))
             // v0.1.3 (profile B18): everyday word signs
             PrimaryButton(c.words + " · " + c.wordCount(Signs.all.size), { vm.openWords() }, Modifier.weight(1f))
@@ -267,7 +271,7 @@ private fun LessonCell(n: Int, state: UiState, book: LetterBook, c: Copy, highli
     val colors =
         if (highlighted) ButtonDefaults.buttonColors(containerColor = SignColors.ButtonPrimary, contentColor = SignColors.OnButtonPrimary)
         else ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary)
-    Button(onClick = onClick, modifier = modifier, colors = colors) { Text(label, maxLines = 1, style = PicoTheme.typography.labelLarge) }
+    Button(onClick = onClick, modifier = modifier.then(NoFocus), colors = colors) { Text(label, maxLines = 1, style = PicoTheme.typography.labelLarge) }
 }
 
 // ----------------------------------------------------------------------------------------- S05 - S08
@@ -317,7 +321,7 @@ private fun BigWord(sign: Sign, c: Copy) {
 @Composable
 private fun Watch(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
     val sign = state.sign
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (sign != null) {
             BigWord(sign, c)
             Small(if (state.opposite) c.oppositeNote else c.signDemoNote)
@@ -340,7 +344,7 @@ private fun Watch(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) 
 private fun Follow(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
     val sign = state.sign
     val moving = state.letter?.let { book.letters[it]?.isMotion } == true
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (sign != null) {
             BigWord(sign, c)
             Small(c.signFit)
@@ -358,7 +362,7 @@ private fun Follow(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook)
 @Composable
 private fun SelfCheck(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
     val l = book[state.letter ?: return]
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(if (l.isMotion) c.selfMotion else c.selfCrossed, style = PicoTheme.typography.bodyLargeMultiline, maxLines = 2)
         Spacer(modifier = Modifier.weight(1f))
         ButtonsRow {
@@ -373,7 +377,7 @@ private fun SelfCheck(state: UiState, vm: SignViewModel, c: Copy, book: LetterBo
 @Composable
 private fun QuizPage(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
     val l = book[state.letter ?: return]
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(c.quizLine, style = PicoTheme.typography.bodyLarge)
         Spacer(modifier = Modifier.weight(1f))
         ButtonsRow {
@@ -386,7 +390,7 @@ private fun QuizPage(state: UiState, vm: SignViewModel, c: Copy, book: LetterBoo
 @Composable
 private fun RevealPage(state: UiState, vm: SignViewModel, c: Copy) {
     val q = state.quiz ?: return
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         when (q.reveal) {
             Reveal.RIGHT -> Text(c.right, style = PicoTheme.typography.titleMedium, color = SignColors.Jade)
             Reveal.WRONG -> Text(c.missPart(q.missKey)?.let { c.almostPart(it) } ?: c.likeThis, style = PicoTheme.typography.titleMedium, color = SignColors.Coral)
@@ -407,7 +411,7 @@ private fun RevealPage(state: UiState, vm: SignViewModel, c: Copy) {
 @Composable
 private fun LessonDonePage(state: UiState, vm: SignViewModel, c: Copy) {
     val d = state.done ?: return
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(
             when {
                 d.words -> c.wordsDone
@@ -443,7 +447,7 @@ private fun LessonDonePage(state: UiState, vm: SignViewModel, c: Copy) {
 @Composable
 private fun ReviewDonePage(state: UiState, vm: SignViewModel, c: Copy) {
     val d = state.reviewDone ?: return
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(c.reviewDone, style = PicoTheme.typography.titleLarge)
         Text(c.rightCount(d.correct, d.total), style = PicoTheme.typography.bodyLarge)
         Small(c.tomorrow(d.dueTomorrow))
@@ -457,9 +461,9 @@ private fun ReviewDonePage(state: UiState, vm: SignViewModel, c: Copy) {
 @Composable
 private fun Alphabet(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
     val letters = book.alphabet
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         for (row in 0 until 5) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 for (col in 0 until 6) {
                     val i = row * 6 + col
                     if (i < letters.size) {
@@ -500,8 +504,8 @@ private fun WordsPage(state: UiState, vm: SignViewModel, c: Copy) {
     val themes = Theme.entries
     val i = themes.indexOf(state.theme)
     val words = Signs.inTheme(state.theme)
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(modifier = Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             RoundIcon(R.drawable.ic_back, c.back) { vm.setTheme(themes[(i - 1 + themes.size) % themes.size]) }
             Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(if (c.en) state.theme.en else state.theme.zh, style = PicoTheme.typography.titleMedium, maxLines = 1)
@@ -510,7 +514,7 @@ private fun WordsPage(state: UiState, vm: SignViewModel, c: Copy) {
             Box(modifier = Modifier.graphicsLayer(scaleX = -1f)) { RoundIcon(R.drawable.ic_back, c.next) { vm.setTheme(themes[(i + 1) % themes.size]) } }
         }
         for (row in words.chunked(3)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 for (w in row) {
                     val done = w.key in state.progress.followed
                     Button(
@@ -541,12 +545,12 @@ private fun WordsPage(state: UiState, vm: SignViewModel, c: Copy) {
 private fun SettingsPage(state: UiState, vm: SignViewModel, c: Copy) {
     if (state.variant == "exit") {
         // v0.1.3 (profile D26): exit asks once more
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(c.exitAsk, style = PicoTheme.typography.bodyLargeMultiline, maxLines = 3)
             Spacer(modifier = Modifier.weight(1f))
             ButtonsRow {
                 SecondaryButton(c.cancel, { vm.cancelExit() }, Modifier.weight(1f))
-                Button(onClick = { vm.confirmExit() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = SignColors.Coral, contentColor = Color(0xFF2A0B05))) {
+                Button(onClick = { vm.confirmExit() }, modifier = Modifier.weight(1f).then(NoFocus), colors = ButtonDefaults.buttonColors(containerColor = SignColors.Coral, contentColor = Color(0xFF2A0B05))) {
                     Text(c.exit, maxLines = 1)
                 }
             }
@@ -554,12 +558,12 @@ private fun SettingsPage(state: UiState, vm: SignViewModel, c: Copy) {
         return
     }
     if (state.variant == "confirm") {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(c.clearAsk, style = PicoTheme.typography.bodyLargeMultiline, maxLines = 3)
             Spacer(modifier = Modifier.weight(1f))
             ButtonsRow {
                 SecondaryButton(c.cancel, { vm.cancelClear() }, Modifier.weight(1f))
-                Button(onClick = { vm.confirmClear() }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = SignColors.Coral, contentColor = Color(0xFF2A0B05))) {
+                Button(onClick = { vm.confirmClear() }, modifier = Modifier.weight(1f).then(NoFocus), colors = ButtonDefaults.buttonColors(containerColor = SignColors.Coral, contentColor = Color(0xFF2A0B05))) {
                     Text(c.clear, maxLines = 1)
                 }
             }
@@ -567,11 +571,16 @@ private fun SettingsPage(state: UiState, vm: SignViewModel, c: Copy) {
         return
     }
     val s = state.settings
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (state.aboutOpen) {
             Text(c.version(vm.version) + "\n" + c.aboutBody, style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelSecondary, maxLines = 6, modifier = Modifier.weight(1f))
             ButtonsRow { SecondaryButton(c.about, { vm.toggleAbout() }, Modifier.weight(1f), selected = true) }
             SecondaryButton(c.exitApp, { vm.askExit() }, Modifier.fillMaxWidth())
+            return@Column
+        }
+        if (state.howToOpen) {
+            HowTo(c, Modifier.weight(1f))
+            ButtonsRow { SecondaryButton(c.howTo, { vm.toggleHowTo() }, Modifier.weight(1f), selected = true) }
             return@Column
         }
         SettingRow(c.language) {
@@ -600,12 +609,52 @@ private fun SettingsPage(state: UiState, vm: SignViewModel, c: Copy) {
         ButtonsRow {
             // v0.1.4 (D21): the system moves the window; this puts it back in front of you, the demo hand beside it
             SecondaryButton(c.recall, { vm.recall() }, Modifier.weight(1f))
+            // v0.1.6 (profile B19): how to use, gesture and controller per main action
+            SecondaryButton(c.howTo, { vm.toggleHowTo() }, Modifier.weight(1f))
+        }
+        ButtonsRow {
             SecondaryButton(c.clearProgress, { vm.askClear() }, Modifier.weight(1f))
             SecondaryButton(c.about, { vm.toggleAbout() }, Modifier.weight(1f), selected = state.aboutOpen)
         }
         Spacer(modifier = Modifier.weight(1f))
         // v0.1.3 (profile D26): the last row of settings
         SecondaryButton(c.exitApp, { vm.askExit() }, Modifier.fillMaxWidth())
+    }
+}
+
+/**
+ * v0.1.6 (profile B19): Settings > "怎么操作": one row per main action, an icon, what to do with the hand, what to do
+ * with the controller. Strings are `how_to_*` resources, read in the app's own language (settings may differ from the
+ * system's).
+ */
+@Composable
+private fun HowTo(c: Copy, modifier: Modifier) {
+    val ctx = LocalContext.current
+    val res =
+        remember(c.en, ctx) {
+            val conf = Configuration(ctx.resources.configuration)
+            conf.setLocale(if (c.en) Locale.ENGLISH else Locale.SIMPLIFIED_CHINESE)
+            ctx.createConfigurationContext(conf).resources
+        }
+    val rows =
+        listOf(
+            Triple(R.drawable.ic_eye, R.string.how_to_watch, R.string.how_to_watch_hand to R.string.how_to_watch_pad),
+            Triple(R.drawable.ic_hand, R.string.how_to_follow, R.string.how_to_follow_hand to R.string.how_to_follow_pad),
+            Triple(R.drawable.ic_touch, R.string.how_to_tap, R.string.how_to_tap_hand to R.string.how_to_tap_pad),
+            Triple(R.drawable.ic_window, R.string.how_to_panel, R.string.how_to_panel_hand to R.string.how_to_panel_pad),
+            Triple(R.drawable.ic_back, R.string.how_to_back, R.string.how_to_back_hand to R.string.how_to_back_pad),
+        )
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        for ((icon, name, how) in rows) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Icon(painter = painterResource(icon), contentDescription = null, tint = PicoTheme.colorScheme.labelPrimary, modifier = Modifier.padding(top = 2.dp).size(22.dp))
+                Text(res.getString(name), style = PicoTheme.typography.titleSmall, modifier = Modifier.padding(start = 10.dp).width(if (c.en) 80.dp else 64.dp), maxLines = 1)
+                Column(modifier = Modifier.weight(1f)) {
+                    FitText(res.getString(how.first), PicoTheme.typography.bodyMedium, PicoTheme.colorScheme.labelPrimary, id = "settings/howto/${res.getResourceEntryName(name)}", maxLines = 2)
+                    FitText(c.padPrefix + res.getString(how.second), PicoTheme.typography.labelMedium, PicoTheme.colorScheme.labelSecondary, id = "settings/howto/${res.getResourceEntryName(name)}/pad")
+                }
+            }
+        }
     }
 }
 
@@ -622,7 +671,7 @@ private fun SettingRow(label: String, items: @Composable () -> Unit) {
 @Composable
 private fun SpikePage(state: UiState, vm: SignViewModel, spike: String, book: LetterBook) {
     val scored = book.letters.values.filter { it.scored }.map { it.l }
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(spike.ifEmpty { "${state.spikeLetter}: no hand" }, style = PicoTheme.typography.labelMedium, maxLines = 6)
         Spacer(modifier = Modifier.weight(1f))
         ButtonsRow {

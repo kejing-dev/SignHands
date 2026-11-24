@@ -37,8 +37,9 @@ enum class Tab {
 
 /**
  * Where the system window is, as far as the app can tell. SDK 6.1 cannot read or set a window's pose (§4): the system
- * opens it straight ahead of the head at [DIST], square to the line of sight; the app opens it only while the head is
- * level ([LevelGate]), so it stands upright at eye height. A system drag after that is not seen.
+ * opens it straight ahead of the head at [DIST], square to the line of sight. v0.1.6 (profile D10) it opens at once,
+ * whatever the head's pitch; the estimate keeps the head's heading and eye height (a pitched open puts the window
+ * higher / lower than estimated; "叫回面前" re-estimates). A system drag after that is not seen.
  *
  * The 3D content keeps out of the window's way instead (§4): the demo hand stands beside it on the dominant side and
  * nearer, the hand label is pushed off it when it would sit in front of or behind it (D8).
@@ -167,16 +168,5 @@ object MainWindowLayout {
         val dy = (e[3] + ky) - v.y // > 0: up
         val dx = if (handed == Handed.RIGHT) (e[0] - kx) - v.x else (e[1] + kx) - v.x
         return if (dy <= abs(dx)) p + V3(0f, dy * v.depth, 0f) else p + right * (dx * v.depth)
-    }
-}
-
-/** "平视前方 / Look straight ahead": on the line of sight (pitch clamped to +-[MAX_PITCH]), [DIST] away, upright. */
-object LevelHintPlacement {
-    const val DIST = 0.75f
-    const val MAX_PITCH = 40f
-
-    fun place(headPos: V3, headYaw: Float, pitchDeg: Float): Placement.Placed {
-        val p = pitchDeg.coerceIn(-MAX_PITCH, MAX_PITCH).toRad()
-        return Placement.Placed(headPos + dirOf(headYaw) * (DIST * cos(p)) + V3(0f, DIST * sin(p), 0f), headYaw)
     }
 }

@@ -8,9 +8,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.pico.spatial.ui.platform.containers.SpatialNavigator
-import io.embodit.signhands.domain.LevelGate
 import io.embodit.signhands.platform.SignLog
-import java.util.Locale
 
 /** Id and tag of the main window (tag != null: "reuse" mode, one instance). */
 const val PANEL_ID = "LessonWindow"
@@ -37,18 +35,6 @@ object WindowCtl {
     private var recallPending = false
     private var askedAtMs = 0L
 
-    /**
-     * D9 (§7.9): the system opens the window square to the line of sight, head pitch included, and nothing can re-level
-     * it afterwards; so every open (first, chip, recall) waits here for a level head. The Stage steps it each frame
-     * ([stepGate]) and shows "平视前方" while [levelHint] is on.
-     */
-    private val gate = LevelGate()
-    private var lastStepMs = 0L
-
-    /** The Stage's "平视前方 / Look straight ahead" hint: an open waits and the head is not level. */
-    var levelHint by mutableStateOf(false)
-        private set
-
     val open: Boolean
         get() = panelState != "never" && panelState != "ON_DESTROY" && panelState != "ON_STOP"
 
@@ -63,58 +49,14 @@ object WindowCtl {
      * the second between an open and the window's ON_CREATE (the chip flashed there).
      */
     fun chipWanted(now: Long): Boolean =
-        if (gate.waiting) false
-        else when (panelState) {
+        when (panelState) {
             "ON_DESTROY", "ON_STOP" -> !recallPending && !(opening && now - askedAtMs < 8000)
             "never" -> askedAtMs > 0 && now - askedAtMs > 8000
             else -> false
         }
 
-    /** Ask for the window: it opens once the head is level (or at once when the Stage sends no frames, [watchdog]). */
-    fun openWindow(why: String) {
-        val now = SystemClock.elapsedRealtime()
-        SignLog.i("WINDOW ask why=$why state=$panelState (opens when the head is level)")
-        gate.ask(why, now)
-        main.removeCallbacks(watchdog)
-        main.postDelayed(watchdog, WATCHDOG_MS)
-    }
-
-    /** One Stage frame: [pitchDeg] = head pitch (+ up), null while the head pose is not valid yet. */
-    fun stepGate(now: Long, pitchDeg: Float?) {
-        lastStepMs = now
-        if (!gate.waiting) {
-            if (levelHint) levelHint = false
-            return
-        }
-        val hint = gate.hintWanted(pitchDeg)
-        if (hint != levelHint) {
-            levelHint = hint
-            SignLog.i(String.format(Locale.US, "LEVEL hint=%s pitch=%.1f waited=%d ms", hint, pitchDeg ?: Float.NaN, gate.waitedMs(now)))
-        }
-        val why = gate.step(now, pitchDeg) ?: return
-        levelHint = false
-        SignLog.i(String.format(Locale.US, "LEVEL ok pitch=%.1f -> open", pitchDeg ?: Float.NaN))
-        openNow(why)
-    }
-
-    /**
-     * No Stage frames for a while: do not hold the window back. Before the first frame that is [FIRST_FRAME_MS] after
-     * the ask (headset cold start: the Stage's frames start ~6 s after launch); after it, [WATCHDOG_MS] without one.
-     */
-    private val watchdog =
-        object : Runnable {
-            override fun run() {
-                if (!gate.waiting) return
-                val now = SystemClock.elapsedRealtime()
-                val stalled = if (lastStepMs == 0L) gate.waitedMs(now) > FIRST_FRAME_MS else now - lastStepMs > WATCHDOG_MS
-                if (stalled) {
-                    val why = gate.pending ?: return
-                    gate.cancel()
-                    levelHint = false
-                    openNow("$why/noframes")
-                } else main.postDelayed(this, WATCHDOG_MS)
-            }
-        }
+    /** v0.1.6 (profile D10): ask for the window and open it at once (no head-pitch gate). */
+    fun openWindow(why: String) = openNow(why)
 
     private fun openNow(why: String) {
         val nav = navigator ?: return SignLog.w("WINDOW open why=$why: no navigator")
@@ -161,12 +103,6 @@ object WindowCtl {
     /** Quit: close the window first (it would otherwise outlive the Stage in the Shared Space, §7.7). */
     fun closeForQuit() {
         recallPending = false
-        gate.cancel()
-        levelHint = false
-        main.removeCallbacks(watchdog)
         runCatching { navigator?.closeWindowContainer(PANEL_ID, PANEL_TAG) }
     }
-
-    private const val WATCHDOG_MS = 3000L
-    private const val FIRST_FRAME_MS = 15000L
 }

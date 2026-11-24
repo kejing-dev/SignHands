@@ -146,18 +146,6 @@ class MainWindowTest {
         assertTrue(Tab.shown(UiState(screen = Screen.S03)))
     }
 
-    @Test
-    fun levelHintIsUprightOnTheLineOfSight() {
-        for (pitch in listOf(-30f, 0f, 30f, -70f)) {
-            val h = LevelHintPlacement.place(head, 20f, pitch)
-            val d = h.position - head
-            assertEquals(LevelHintPlacement.DIST, d.length, 1e-4f)
-            val elev = Math.toDegrees(atan2(d.y.toDouble(), kotlin.math.sqrt((d.x * d.x + d.z * d.z).toDouble()))).toFloat()
-            assertEquals(pitch.coerceIn(-40f, 40f), elev, 0.01f)
-            assertEquals(1f, h.rotation.rotate(V3.UP).y, 1e-4f)
-        }
-    }
-
     /** Where SignScene puts the label: beside the wrist (teaching spot + [offset]) in [frame]. */
     private fun labelAt(frame: PracticeFrame, offset: V3, handed: Handed): V3 {
         val wrist = frame.toSpace(Layout.sided(Layout.TEACHING_SPOT, handed) + offset)

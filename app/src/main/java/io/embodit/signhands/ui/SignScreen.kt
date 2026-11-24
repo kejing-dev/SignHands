@@ -20,9 +20,12 @@ import com.pico.spatial.ui.design.Text
 import com.pico.spatial.ui.platform.containers.LocalSpatialNavigator
 import com.pico.spatial.ui.platform.containers.SpatialNavigator
 import io.embodit.signhands.ui.panels.PrimaryButton
+import io.embodit.signhands.ui.panels.eatPadKeys
 import io.embodit.signhands.ui.theme.SignColors
 import io.embodit.signhands.ui.window.WindowCtl
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -61,9 +64,9 @@ object PanelSizes {
 }
 
 /**
- * The Stage content: one full-size SpatialView carrying the 3D scene, the hand label and the "打开面板 / 平视前方" chip.
- * v0.1.4 (profile D8 / D21): the lesson panel is the system main window ([SignWindow]), opened from here once the head
- * is level (§7.9); the system moves / closes it, the app has no drag code for it. The turntable drag is the only 3D
+ * The Stage content: one full-size SpatialView carrying the 3D scene, the hand label and the "打开面板" chip.
+ * v0.1.4 (profile D8 / D21): the lesson panel is the system main window ([SignWindow]), opened from here at once
+ * (v0.1.6, D10); the system moves / closes it, the app has no drag code for it. The turntable drag is the only 3D
  * gesture (the teacher's hand and the watch model carry no input, so a pinch made while signing never selects them).
  */
 @Composable
@@ -95,15 +98,18 @@ fun SignScreen() {
             SignLog.i("STAGE disposed")
         }
     }
-    // the main window opens once the head is level (D9, factory native-window-move §7.9)
+    // v0.1.6 (profile D10): the main window opens at once; the Stage chip / controller B reopen it after x
     LaunchedEffect(Unit) { WindowCtl.openWindow("stage") }
 
     // real hands stay visible in passthrough under the teacher's hand (design container.upperLimbRenderMode)
     val limbs = LocalStageUpperLimbRenderModelManager.current
     LaunchedEffect(limbs, DebugHost.limbMode.value) {
         val mode = DebugHost.limbMode.value
-        val r = runCatching { limbs.setUpperLimbRenderMode(mode) }
-        SignLog.i("LIMBS mode=$mode result=${r.getOrNull() ?: r.exceptionOrNull()}")
+        // v0.1.6: a blocking system call (emulator: ~20 s on a busy machine, "isn't responding" at every cold start,
+        // main-thread trace in setUpperLimbRenderMode); off the main thread
+        val t0 = android.os.SystemClock.elapsedRealtime()
+        val r = withContext(Dispatchers.IO) { runCatching { limbs.setUpperLimbRenderMode(mode) } }
+        SignLog.i("LIMBS mode=$mode result=${r.getOrNull() ?: r.exceptionOrNull()} took=${android.os.SystemClock.elapsedRealtime() - t0} ms")
     }
 
     val copy = remember(state.settings.lang) { Copy(state.settings.lang) }
@@ -112,15 +118,26 @@ fun SignScreen() {
             modifier =
                 Modifier
                     .fillMaxSize()
+                    // v0.1.6 (D60): BACK / B reaching the Stage (window closed) go to the app's back handler, pad keys are eaten
+                    .eatPadKeys("stage")
                     .pointerInput(Unit) {
-                        // the watch model's turntable (D21 allows the 3D object's own drag); nothing else on the Stage drags
+                        // the watch model's turntable (D21 allows the 3D object's own drag); nothing else on the Stage drags.
+                        // v0.1.6 (gate drag-delta): dragAmount is a per-event increment, summed into the drag's total
+                        var dragTotalX = 0f
                         detectSpatialDragGesture(
                             context = context,
                             targetedToEntity = TargetEntity.any { e -> scene.ringHit?.let { it === e } == true },
-                            onDragEnd = { _ -> scene.onRingDragEnd() },
-                            onDragCancel = { _ -> scene.onRingDragEnd() },
+                            onDragEnd = { _ ->
+                                dragTotalX = 0f
+                                scene.onRingDragEnd()
+                            },
+                            onDragCancel = { _ ->
+                                dragTotalX = 0f
+                                scene.onRingDragEnd()
+                            },
                         ) { value ->
-                            scene.onRingDrag(value.dragAmount.x)
+                            dragTotalX += value.dragAmount.x
+                            scene.onRingDrag(dragTotalX)
                         }
                     },
             attachments = {
@@ -137,18 +154,11 @@ fun SignScreen() {
     }
 }
 
-/**
- * The Stage's one chip: "平视前方 / 面板就出来" while the window waits for a level head, else "打开面板" while the window
- * is closed (system x) or minimised. The scene shows it only then.
- */
+/** The Stage's one chip: "打开面板" while the window is closed (system x) or minimised. The scene shows it only then. */
 @Composable
 private fun OpenChip(copy: Copy) {
     Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(Color(0xCC14121A)), contentAlignment = Alignment.Center) {
-        if (WindowCtl.levelHint) {
-            Text(copy.levelHint, style = PicoTheme.typography.titleMedium, color = SignColors.LabelInk, textAlign = TextAlign.Center, maxLines = 2)
-        } else {
-            PrimaryButton(copy.openPanel, { WindowCtl.reopen("chip") })
-        }
+        PrimaryButton(copy.openPanel, { WindowCtl.reopen("chip") })
     }
 }
 

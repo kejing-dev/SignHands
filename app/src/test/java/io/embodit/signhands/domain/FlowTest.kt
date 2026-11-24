@@ -217,6 +217,24 @@ class FlowTest {
         assertTrue(f.state.progress.lessons.isEmpty())
     }
 
+    /** v0.1.6 (B19 / D60): "怎么操作" replaces the rows; back (‹ or controller B) closes it, then goes home. */
+    @Test
+    fun howToOpensAndBackClosesItFirst() {
+        val f = flow(first = false)
+        f.openSettings(now)
+        f.toggleHowTo()
+        assertTrue(f.state.howToOpen)
+        f.toggleAbout()
+        assertTrue(f.state.aboutOpen)
+        assertFalse(f.state.howToOpen)
+        f.toggleHowTo()
+        f.back(now)
+        assertEquals(Screen.S14, f.state.screen)
+        assertFalse(f.state.howToOpen)
+        f.back(now)
+        assertEquals(Screen.S04, f.state.screen)
+    }
+
     @Test
     fun freeModeReturnsToTheAlphabet() {
         val f = flow(first = false)

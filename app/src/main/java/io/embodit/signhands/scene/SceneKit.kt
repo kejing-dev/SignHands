@@ -74,11 +74,7 @@ internal fun Entity.setOpacity(opacity: Float) {
 internal class SharedResources {
     private val owned = ArrayList<Resource>()
 
-    fun <T : Resource> keep(resource: T): T {
-        resource.toGlobal()
-        owned += resource
-        return resource
-    }
+    fun <T : Resource> keep(resource: T): T = resource.also { it.toGlobal(); owned += it }
 
     fun close() {
         owned.forEach { runCatching { it.close() } }

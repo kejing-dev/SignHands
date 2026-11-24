@@ -95,6 +95,8 @@ data class UiState(
     /** The word just spelled (lesson 6), shown on the hand label for a moment. */
     val wordDone: String? = null,
     val aboutOpen: Boolean = false,
+    /** v0.1.6 (profile B19): Settings > "怎么操作" replaces the setting rows. */
+    val howToOpen: Boolean = false,
     val handVisible: Boolean = false,
     val enteredMs: Long = 0L,
     /** Debug `hold=1`: the next short state does not move on by itself. */
@@ -223,7 +225,7 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     fun openSettings(now: Long) = go(Screen.S14, now)
 
     fun home(now: Long) {
-        set(state.copy(course = null, quiz = null, lostFrom = null, aboutOpen = false))
+        set(state.copy(course = null, quiz = null, lostFrom = null, aboutOpen = false, howToOpen = false))
         go(Screen.S04, now)
     }
 
@@ -237,7 +239,12 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
                     else -> home(now)
                 }
             Screen.S09, Screen.S10 -> home(now)
-            Screen.S14 -> if (state.variant == "confirm" || state.variant == "exit") go(Screen.S14, now) else home(now)
+            Screen.S14 ->
+                when {
+                    state.variant == "confirm" || state.variant == "exit" -> go(Screen.S14, now)
+                    state.aboutOpen || state.howToOpen -> set(state.copy(aboutOpen = false, howToOpen = false))
+                    else -> home(now)
+                }
             else -> home(now)
         }
     }
@@ -542,7 +549,9 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
         go(Screen.S15, now)
     }
 
-    fun toggleAbout() = set(state.copy(aboutOpen = !state.aboutOpen))
+    fun toggleAbout() = set(state.copy(aboutOpen = !state.aboutOpen, howToOpen = false))
+
+    fun toggleHowTo() = set(state.copy(howToOpen = !state.howToOpen, aboutOpen = false))
 
     /** v0.1.3 (profile D26): "Exit" at the bottom of settings asks first (S14 variant "exit"). */
     fun askExit(now: Long) = go(Screen.S14, now, "exit")

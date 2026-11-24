@@ -169,6 +169,8 @@ class SignViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleAbout() = act { toggleAbout() }
 
+    fun toggleHowTo() = act { toggleHowTo() }
+
     /** v0.1.3 (profile D26): settings > Exit asks first; the confirmed exit is carried out by the screen ([onExit]). */
     fun askExit() = act { askExit(now()) }
 

@@ -68,7 +68,6 @@ class Copy(val lang: Lang) {
     // v0.1.4: the lesson panel is a system window (moved / closed with the system's own control under it)
     val lessons get() = t("课程", "Lessons")
     val openPanel get() = t("打开面板", "Open panel")
-    val levelHint get() = t("平视前方\n面板就出来", "Look straight ahead\nand the panel opens")
     val back get() = t("返回", "Back")
 
     fun lessonTitle(n: Int, letter: String) = t("第 $n 课 · $letter", "Lesson $n · $letter")
@@ -126,6 +125,8 @@ class Copy(val lang: Lang) {
     val clear get() = t("清空", "Clear")
     val cleared get() = t("已清空", "Cleared")
     val about get() = t("关于", "About")
+    val howTo get() = t("怎么操作", "How to use")
+    val padPrefix get() = t("手柄：", "Controller: ")
     val aboutBody get() =
         t(
             "这是美国手语 ASL，不是中国手语。常用词取自入门课的日常词，动作说明为本应用自写、做了简化。\n手模：WebXR Input Profiles generic-hand © 2019 Amazon · MIT",

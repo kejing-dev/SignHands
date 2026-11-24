@@ -3,14 +3,21 @@ package io.embodit.signhands.ui.window
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import android.view.View
+import android.view.ViewParent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import com.pico.spatial.ui.design.Icon
 import com.pico.spatial.ui.design.Text
 import com.pico.spatial.ui.design.windows.TabBar
 import com.pico.spatial.ui.platform.ViewPoint
+import io.embodit.signhands.platform.BackKeys
 import io.embodit.signhands.platform.SignLog
+import io.embodit.signhands.ui.panels.eatPadKeys
 
 /*
  * 主窗口模板（taste D8「合成一个窗口模板」+ D21 拖动交给系统 + D26 设置里退出应用），产线 prompts/snippets/
@@ -32,7 +39,7 @@ class MainWindowTab(val id: String, val label: String, @DrawableRes val icon: In
 @Composable
 fun MainWindow(tabs: List<MainWindowTab>, current: String, showTabs: Boolean, onSelect: (String) -> Unit, content: @Composable () -> Unit) {
     require(tabs.size in 1..7) { "TabBar holds at most 7 items" }
-    Box(Modifier.fillMaxSize()) { content() }
+    Box(Modifier.fillMaxSize().eatPadKeys("window")) { content() }
 
     if (!showTabs) return
     // system TabBar: its own small window outside this one (emulator 6.1.0, seen from the front: centred above the window)
@@ -42,11 +49,37 @@ fun MainWindow(tabs: List<MainWindowTab>, current: String, showTabs: Boolean, on
                 selected = current == t.id,
                 onClick = {
                     SignLog.i("TAB ${t.id}")
+                    // the TabBar is a window of its own: hook its root so BACK / B pressed after a tab tap still arrives
+                    BackKeys.sweep("tab")
                     onSelect(t.id)
                 },
-                mainContent = { Icon(painter = painterResource(t.icon), contentDescription = t.label) },
+                mainContent = {
+                    TabKeyGuard()
+                    Icon(painter = painterResource(t.icon), contentDescription = t.label)
+                },
                 supportContent = { Text(t.label) },
             )
         }
+    }
+}
+
+/**
+ * v0.1.6 (profile D60): the TabBar lives in a Dialog window of its own, where the focused tab clicks on A / X / ENTER /
+ * DPAD_CENTER and BACK never reaches the activity. From inside a tab, walk up to the [DialogWindowProvider] and wrap
+ * that window's callback ([BackKeys.wrap]): unassigned pad keys are eaten, BACK / B go to the app's one back handler.
+ */
+@Composable
+internal fun TabKeyGuard() {
+    val view = LocalView.current
+    LaunchedEffect(view) {
+        var v: Any? = view
+        while (v != null) {
+            if (v is DialogWindowProvider) {
+                BackKeys.wrap(v.window, "TabBar")
+                return@LaunchedEffect
+            }
+            v = (v as? View)?.parent ?: (v as? ViewParent)?.parent
+        }
+        SignLog.w("KEY TabBar window not found from ${view.javaClass.simpleName}")
     }
 }

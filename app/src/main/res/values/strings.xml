@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Sign Hands</string>
+    <!-- v0.1.6 (profile B19): Settings > How to use. One row per main action: what to do with the hand, with the controller. -->
+    <string name="how_to_title">How to use</string>
+    <string name="how_to_watch">Watch</string>
+    <string name="how_to_watch_hand">The teacher\'s hand signs beside the window. Pinch the ring under it and drag sideways to turn it.</string>
+    <string name="how_to_watch_pad">Point at the ring, hold the trigger and drag.</string>
+    <string name="how_to_follow">Follow</string>
+    <string name="how_to_follow_hand">Raise your hand into the see-through hand and copy it. When it fits, the next sign comes by itself.</string>
+    <string name="how_to_follow_pad">Put the controllers down: following needs your bare hand.</string>
+    <string name="how_to_tap">Buttons</string>
+    <string name="how_to_tap_hand">Look or point at a button and pinch.</string>
+    <string name="how_to_tap_pad">Point the ray and press the trigger.</string>
+    <string name="how_to_panel">Panel</string>
+    <string name="how_to_panel_hand">The dot under the window moves, closes or hides it. When it is closed, tap \"Open panel\".</string>
+    <string name="how_to_panel_pad">Press B to bring a closed panel back.</string>
+    <string name="how_to_back">Back</string>
+    <string name="how_to_back_hand">Tap ‹ at the top left of the window.</string>
+    <string name="how_to_back_pad">Press B to go back one page.</string>
 </resources>
