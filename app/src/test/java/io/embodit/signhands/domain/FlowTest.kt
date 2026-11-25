@@ -217,6 +217,22 @@ class FlowTest {
         assertTrue(f.state.progress.lessons.isEmpty())
     }
 
+    /** v0.1.7: the watch page's turn slider is clamped and every new demo starts at the default angle. */
+    @Test
+    fun turnSliderResetsOnANewDemo() {
+        val f = flow(first = false)
+        f.openAlphabet(now)
+        f.openLetter("G", now)
+        assertEquals(Screen.S05, f.state.screen)
+        f.setTurn(400f)
+        assertEquals(180f, f.state.turn, 0f)
+        f.setTurn(-45f)
+        assertEquals(-45f, f.state.turn, 0f)
+        f.back(now)
+        f.openLetter("H", now)
+        assertEquals(0f, f.state.turn, 0f)
+    }
+
     /** v0.1.6 (B19 / D60): "怎么操作" replaces the rows; back (‹ or controller B) closes it, then goes home. */
     @Test
     fun howToOpensAndBackClosesItFirst() {

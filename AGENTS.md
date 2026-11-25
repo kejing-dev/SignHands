@@ -1,8 +1,16 @@
 # 手语老师 Sign Hands — project notes for agents
 
-PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.1.6.
+PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.1.7.
 A translucent teacher's hand sits on your own hand and forms the 26 ASL letters; learned letters come back on a
 Leitner schedule. v0.1.3 adds 59 everyday ASL word signs in 9 themes.
+
+**v0.1.7 (user on the headset with v0.1.6: the circle and bar under a word demo "是啥意思，应该用原生的 bar 组件" /
+"这哪一看就是人啊，你这也太抽象了，去掉吧")**
+- The word demo's head ring and shoulder bar are gone; the demo shows the hand and its amber path only.
+- The turntable ring under the demo hand (and its 3D drag, collider, `onRingDrag`) is gone: the watch page has a SpatialUI
+  `Slider` "转动 / Turn" (-180..180 degrees from the default angle, value shown at the right). The turn lives in
+  `UiState.turn` (`Flow.setTurn`, reset to 0 on every `go(S05)`); debug `watch angle=<deg>` sets it. No 3D gesture is
+  left on the Stage. How-to "看示范" lines updated.
 
 **v0.1.6 (polish station M0, 2026-11-24: factory rules added after v0.1.5; `ui_gates.py sign-hands` PASS)**
 - D10: no head-pitch gate any more. `LevelGate` / `LevelHintPlacement` / "平视前方" are gone; the main window opens at

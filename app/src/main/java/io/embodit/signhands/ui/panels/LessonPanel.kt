@@ -58,6 +58,11 @@ import android.content.res.Configuration
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import com.pico.spatial.ui.design.Slider
+import kotlin.math.roundToInt
 
 
 @Composable
@@ -331,12 +336,36 @@ private fun Watch(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) 
             Small(if (state.opposite) c.oppositeNote else c.dragToTurn)
         }
         Spacer(modifier = Modifier.weight(1f))
+        TurnSlider(state, vm, c)
         ButtonsRow {
             SecondaryButton((if (state.slow) "✓ " else "") + c.slow, { vm.toggleSlow() }, selected = state.slow)
             SecondaryButton((if (state.opposite) "✓ " else "") + c.opposite, { vm.toggleOpposite() }, selected = state.opposite)
             SecondaryButton(c.replay, { vm.replay() })
         }
         PrimaryButton(if (state.watchOnly) c.next else c.tryIt, { vm.tryIt() }, Modifier.fillMaxWidth())
+    }
+}
+
+/**
+ * v0.1.7 (user on the headset: the ring under the demo hand "应该用原生的 bar 组件"): the SpatialUI Slider turns the demo
+ * hand -180..180 degrees from its default angle (0 in the middle); a new demo starts in the middle again.
+ */
+@Composable
+private fun TurnSlider(state: UiState, vm: SignViewModel, c: Copy) {
+    var local by remember(state.enteredMs) { mutableFloatStateOf(state.turn) }
+    // follow a turn set from elsewhere (debug `watch angle=`); the slider's own changes land here unchanged
+    if (state.turn != local && !state.turn.isNaN()) local = state.turn
+    Row(modifier = Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(c.turnLabel, style = PicoTheme.typography.bodyMedium, modifier = Modifier.width(if (c.en) 48.dp else 40.dp), maxLines = 1)
+        Slider(
+            value = (local + 180f) / 360f,
+            onValueChange = { v ->
+                local = v * 360f - 180f
+                vm.setTurn(local)
+            },
+            modifier = Modifier.weight(1f).height(48.dp).then(NoFocus),
+        )
+        Text("${local.roundToInt()}°", style = PicoTheme.typography.labelLarge, modifier = Modifier.padding(start = 12.dp).width(52.dp), textAlign = TextAlign.End, maxLines = 1)
     }
 }
 

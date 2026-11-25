@@ -121,7 +121,7 @@ object DebugHost {
                 }
                 "watch" -> vm.debug { _, _ ->
                     debugSet(state.copy(slow = args["slow"]?.let { it == "1" } ?: state.slow, opposite = args["opposite"]?.let { it == "1" } ?: state.opposite))
-                    args["angle"]?.toFloatOrNull()?.let { scene.onRingDrag(it / 0.35f) }
+                    args["angle"]?.toFloatOrNull()?.let { vm.setTurn(it) }
                 }
                 "quiz" -> {
                     val n = args["lesson"]?.toIntOrNull() ?: 1

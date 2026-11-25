@@ -36,7 +36,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -44,8 +43,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pico.spatial.ui.foundation.content.SpatialView
 import com.pico.spatial.ui.foundation.dsl.registerSystem
 import com.pico.spatial.ui.foundation.dsl.unregisterSystem
-import com.pico.spatial.ui.foundation.gesture.TargetEntity
-import com.pico.spatial.ui.foundation.gesture.detectSpatialDragGesture
 import com.pico.spatial.ui.platform.LocalStageUpperLimbRenderModelManager
 import com.pico.spatial.ui.platform.ability.UpperLimbRenderMode
 import io.embodit.signhands.debug.DebugHost
@@ -119,27 +116,7 @@ fun SignScreen() {
                 Modifier
                     .fillMaxSize()
                     // v0.1.6 (D60): BACK / B reaching the Stage (window closed) go to the app's back handler, pad keys are eaten
-                    .eatPadKeys("stage")
-                    .pointerInput(Unit) {
-                        // the watch model's turntable (D21 allows the 3D object's own drag); nothing else on the Stage drags.
-                        // v0.1.6 (gate drag-delta): dragAmount is a per-event increment, summed into the drag's total
-                        var dragTotalX = 0f
-                        detectSpatialDragGesture(
-                            context = context,
-                            targetedToEntity = TargetEntity.any { e -> scene.ringHit?.let { it === e } == true },
-                            onDragEnd = { _ ->
-                                dragTotalX = 0f
-                                scene.onRingDragEnd()
-                            },
-                            onDragCancel = { _ ->
-                                dragTotalX = 0f
-                                scene.onRingDragEnd()
-                            },
-                        ) { value ->
-                            dragTotalX += value.dragAmount.x
-                            scene.onRingDrag(dragTotalX)
-                        }
-                    },
+                    .eatPadKeys("stage"),
             attachments = {
                 AttachmentPanel(PanelIds.LABEL) {
                     Gate(scene, PanelIds.LABEL, PanelSizes.LABEL) { HandLabel(state, vm.book) }

@@ -78,9 +78,9 @@ object PanelIds {
 
 /**
  * The 3D side of the app, driven once per frame by [SignFrameSystem] (never through Compose): reads the head and
- * the dominant hand, judges the letter (S06 / S09), poses and places the teacher's hand, the watch model and its
- * turntable, the hint ring / turn-palm arrow, the J / Z trail, the hand label and the window chip; steps the main
- * window's level gate (D9) and keeps the 3D content out of the window's way (D8).
+ * the dominant hand, judges the letter (S06 / S09), poses and places the teacher's hand, the watch model (turned by
+ * the window's slider, v0.1.7), the hint ring / turn-palm arrow, the J / Z trail, the hand label and the window chip;
+ * keeps the 3D content out of the window's way (D8).
  * The ViewModel only gets discrete events and a hint key at most 10 times a second.
  */
 class SignScene(private val vm: SignViewModel, private val head: HeadTracker, private val hands: HandTracker, private val scope: CoroutineScope) {
@@ -88,10 +88,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
 
     /** The debug page (SPIKE) reads this a few times a second. */
     val spikeText = WindowSpike.text
-
-    /** The turntable's collider: drag target. */
-    @Volatile var ringHit: Entity? = null
-        private set
 
     // --- debug hooks
     @Volatile var fake: FakeHand? = null
@@ -109,13 +105,9 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     private val ghost = HashMap<Handed, HandView>()
     private val watch = HashMap<Handed, HandView>()
     private var modelsDone = false
-    private var ring: ModelEntity? = null
     private var hintRing: ModelEntity? = null
     private var arrow: ModelEntity? = null
     private val trail = ArrayList<ModelEntity>()
-    /** v0.1.3 word demos: an outline of the signer's head and shoulders, so "at the chin" / "on the chest" reads. */
-    private var headOutline: ModelEntity? = null
-    private var shoulders: ModelEntity? = null
     private var lastLoosen = -1L
 
     private inner class Slot(val id: String, val holder: Entity, val scale: Float) {
@@ -179,7 +171,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     private var watchKey = ""
     private var watchT = 0f
     private var turn = 0f
-    private var userTurn = 0f
     private var lastReplay = -1
 
     // the main window's estimated pose (the station) and the Stage panels
@@ -269,7 +260,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         }
         slots.clear()
         panelShown.clear()
-        ringHit = null
         stationSet = false
         windowEpoch = -1
         runCatching { root?.destroy(true) }
@@ -303,36 +293,12 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     }
 
     private fun queueBuild(root: Entity) {
-        work += "ring" to {
-            val mat = unlit(shared, SignColors.Ring, BlendingMode.TRANSPARENT, opacity = 0.55f, twoSided = true, depthWrite = false)
-            ring = ModelEntity(Meshes.ring(RING_R - 0.004f, RING_R, "turntable", segments = 72), mat).also {
-                root.addChild(it)
-                it.setVisible(false)
-            }
-            ringHit = Entity().also {
-                runCatching { it.setName("ringHit") }
-                runCatching { it.components.set(CollisionComponent(listOf(shared.keep(ShapeResource.createBox(Vector3(RING_R * 2.2f, 0.05f, RING_R * 2.2f)))), PhysicsMaterialResource())) }
-                it.setLocal(position = STOW)
-                root.addChild(it)
-            }
-        }
         work += "hint" to {
             hintRing = ModelEntity(Meshes.ring(0.004f, 0.006f, "hintRing", segments = 32), unlit(shared, SignColors.Coral, twoSided = true, depthWrite = false)).also {
                 root.addChild(it)
                 it.setVisible(false)
             }
             arrow = ModelEntity(Meshes.bentArrow(0.05f, "palmArrow"), unlit(shared, SignColors.Coral, twoSided = true, depthWrite = false)).also {
-                root.addChild(it)
-                it.setVisible(false)
-            }
-        }
-        work += "body" to {
-            val mat = unlit(shared, SignColors.Ring, BlendingMode.TRANSPARENT, opacity = 0.5f, twoSided = true, depthWrite = false)
-            headOutline = ModelEntity(Meshes.ring(HEAD_R - 0.004f, HEAD_R, "headOutline", segments = 64), mat).also {
-                root.addChild(it)
-                it.setVisible(false)
-            }
-            shoulders = ModelEntity(Meshes.unitCube("shoulders"), mat).also {
                 root.addChild(it)
                 it.setVisible(false)
             }
@@ -363,22 +329,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     // ---------------------------------------------------------------------------------------- gestures
 
     /** Turntable drag: px of horizontal drag -> degrees (about 6 degrees per cm at arm's length). */
-    private var turnAtDragStart: Float? = null
-
-    /**
-     * v0.1.6 (gate drag-delta): [totalDxPx] is the drag's total sideways travel since it started (SDK 6.1.9 hands out
-     * per-event increments; SignScreen adds them up), so the turn is the start angle plus the total.
-     */
-    fun onRingDrag(totalDxPx: Float) {
-        val start = turnAtDragStart ?: userTurn.also { turnAtDragStart = it }
-        userTurn = start + totalDxPx * DEG_PER_PX
-    }
-
-    fun onRingDragEnd() {
-        turnAtDragStart = null
-        SignLog.i("WATCH turn=${userTurn.toInt()}")
-    }
-
     /**
      * v0.1.4: the station is where the main window is (estimated: the system opens it straight ahead of a level head,
      * [MainWindowLayout.estimate]); the demo hand stands beside it. Heading only, upright (D9).
@@ -726,12 +676,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val demo = s.screen == Screen.S03
         val shownLetter = if (demo) book[DEMO_LETTERS[((SystemClock.elapsedRealtime() / DEMO_MS) % DEMO_LETTERS.size).toInt()]] else letter
         val shown = (s.screen == Screen.S05 || demo) && shownLetter != null && view != null
-        headOutline?.setVisible(false)
-        shoulders?.setVisible(false)
         if (!shown) {
             view?.setVisible(false)
-            ring?.setVisible(false)
-            ringHit?.setLocal(position = STOW)
             trail.forEach { it.setVisible(false) }
             watchKey = ""
             return
@@ -741,7 +687,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         if (key != watchKey || s.replay != lastReplay) {
             if (key != watchKey) {
                 // v0.1.1 (D21): the demo hand stands at a fixed spot beside the window (moves when the window is re-opened)
-                userTurn = 0f
                 turn = defaultTurn(l.l)
             }
             watchKey = key
@@ -755,8 +700,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         if (watchT > cycle) watchT = 0f
         val u = (watchT / MORPH).coerceIn(0f, 1f)
         view.pose(l.clipStart + book.morphSec * u)
-        // turn: default 3/4 angle, + drag, + "from the front" (180), eased
-        val target = defaultTurn(l.l) + userTurn + if (s.opposite) 180f else 0f
+        // turn: default 3/4 angle, + the window's "转动" slider (v0.1.7), + "from the front" (180), eased
+        val target = defaultTurn(l.l) + s.turn + if (s.opposite) 180f else 0f
         val step = 180f / 0.4f * dt
         val d = target - turn
         turn = if (abs(d) <= step) target else turn + if (d > 0) step else -step
@@ -788,18 +733,13 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         } else {
             trail.forEach { it.setVisible(false) }
         }
-        // the turntable under the model
-        val ringPos = centre + V3(0f, -RING_BELOW, 0f)
-        ring?.setVisible(true)
-        ring?.setLocal(position = ringPos)
-        ringHit?.setLocal(position = ringPos)
     }
 
     /**
      * v0.1.3 word demo (S05 of a word sign): the big demo hand morphs into the sign's handshape, then moves its palm along
-     * the sign's path round an outline of the signer's head and shoulders (so chin / forehead / chest read), with the
-     * path drawn behind it. Two-handed signs show the other hand resting in its spot. Same turntable, slow and "from the
-     * front" as the letters.
+     * the sign's path (v0.1.7: the abstract head ring / shoulder bar are gone, user: too abstract), with the path drawn
+     * behind it. Two-handed signs show the other hand resting in its spot. Same turn slider, slow and "from the front"
+     * as the letters.
      */
     private fun updateSignWatch(s: UiState, sign: Sign, handed: Handed, dt: Float) {
         val other = if (handed == Handed.RIGHT) Handed.LEFT else Handed.RIGHT
@@ -808,18 +748,13 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         if (s.screen != Screen.S05 || view == null || shape == null) {
             view?.setVisible(false)
             watch[other]?.setVisible(false)
-            headOutline?.setVisible(false)
-            shoulders?.setVisible(false)
-            ring?.setVisible(false)
-            ringHit?.setLocal(position = STOW)
-            trail.forEach { it.setVisible(false) }
+                    trail.forEach { it.setVisible(false) }
             watchKey = ""
             return
         }
         val key = "${sign.id}:${s.enteredMs}:${s.course?.index}"
         if (key != watchKey || s.replay != lastReplay) {
             if (key != watchKey) {
-                userTurn = 0f
                 turn = SIGN_TURN
             }
             watchKey = key
@@ -833,7 +768,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         if (watchT > cycle) watchT = 0f
         val u = (watchT / MORPH).coerceIn(0f, 1f)
         view.pose(shape.clipStart + book.morphSec * u)
-        val target = SIGN_TURN + userTurn + if (s.opposite) 180f else 0f
+        val target = SIGN_TURN + s.turn + if (s.opposite) 180f else 0f
         val step = 180f / 0.4f * dt
         val d = target - turn
         turn = if (abs(d) <= step) target else turn + if (d > 0) step else -step
@@ -862,15 +797,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         } else {
             otherView?.setVisible(false)
         }
-        // head and shoulders outline
-        headOutline?.let {
-            it.setVisible(true)
-            it.setLocal(position = origin, rotation = frameRot * Q4.pitch(90f), scale = V3(k, k, k))
-        }
-        shoulders?.let {
-            it.setVisible(true)
-            it.setLocal(position = origin + frameRot.rotate(V3(0f, -SHOULDER_DROP * k, 0.02f * k)), rotation = frameRot, scale = V3(SHOULDER_W * k, 0.008f, 0.008f))
-        }
         // the path, drawn as the palm moves
         if (trail.size == TRAIL_DOTS) {
             for (i in 0 until TRAIL_DOTS) {
@@ -880,10 +806,6 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
                 if (on) trail[i].setLocal(position = toSpace(sign.palmAt(f)))
             }
         }
-        val ringPos = watchCentre() + V3(0f, -SIGN_RING_BELOW, 0f)
-        ring?.setVisible(true)
-        ring?.setLocal(position = ringPos)
-        ringHit?.setLocal(position = ringPos)
     }
 
     /** design `watchModel.defaultAngle`: palm-forward letters with a hidden thumb start 35 degrees round. */
@@ -1009,10 +931,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         const val MORPH = 1.2f
         const val WATCH_HOLD = 1.5f
         const val CENTRE_UP = 0.09f
-        const val RING_R = 0.13f
-        const val RING_BELOW = 0.27f
         const val TRAIL_DOTS = 24
-        const val DEG_PER_PX = 0.35f
         const val YAW_TAU = 0.8f
         const val LOST_GRACE_MS = 1000L
         const val LENGTH_SAMPLE_MS = 1500L
@@ -1023,13 +942,9 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         private val DEMO_LETTERS = listOf("A", "B", "C", "D", "L", "Y")
         const val LABEL_MOVE_SEC = 0.3f
         const val MOTION_LOOP_MS = 2400L
-        /** Word demos: scale of hand and body, default turntable angle, the outline. */
+        /** Word demos: scale of the hand, default turn. */
         const val SIGN_SCALE = 1.3f
         const val SIGN_TURN = 40f
-        const val HEAD_R = 0.085f
-        const val SHOULDER_DROP = 0.24f
-        const val SHOULDER_W = 0.36f
-        const val SIGN_RING_BELOW = 0.42f
         /** The point of the signer's body (head frame) that sits on the watch spot. */
         private val SIGN_CENTRE = V3(0.02f, -0.14f, -0.18f)
         const val SHOW_FRAMES = 2L

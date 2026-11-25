@@ -80,6 +80,8 @@ data class UiState(
     val quiz: Quiz? = null,
     val slow: Boolean = false,
     val opposite: Boolean = false,
+    /** v0.1.7: the watch page's "转动" slider, degrees added to the demo hand's default angle (-180..180). */
+    val turn: Float = 0f,
     /** Bumped by "Replay": the scene restarts the demo. */
     val replay: Int = 0,
     val watchOnly: Boolean = false,
@@ -148,7 +150,9 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     }
 
     private fun go(screen: Screen, now: Long, variant: String? = null, s: UiState = state) {
-        set(s.copy(screen = screen, variant = variant, enteredMs = now, armed = null, hint = if (screen == s.screen) s.hint else null))
+        // v0.1.7: every new demo starts from its default angle (the scene used to reset its drag turn the same way)
+        val turn = if (screen == Screen.S05) 0f else s.turn
+        set(s.copy(screen = screen, variant = variant, enteredMs = now, armed = null, hint = if (screen == s.screen) s.hint else null, turn = turn))
     }
 
     // ------------------------------------------------------------------------------------------ start
@@ -254,6 +258,8 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     fun toggleSlow() = set(state.copy(slow = !state.slow))
 
     fun toggleOpposite() = set(state.copy(opposite = !state.opposite))
+
+    fun setTurn(deg: Float) = set(state.copy(turn = deg.coerceIn(-180f, 180f)))
 
     fun replay() = set(state.copy(replay = state.replay + 1))
 

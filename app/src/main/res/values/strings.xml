@@ -4,8 +4,8 @@
     <!-- v0.1.6 (profile B19): Settings > How to use. One row per main action: what to do with the hand, with the controller. -->
     <string name="how_to_title">How to use</string>
     <string name="how_to_watch">Watch</string>
-    <string name="how_to_watch_hand">The teacher\'s hand signs beside the window. Pinch the ring under it and drag sideways to turn it.</string>
-    <string name="how_to_watch_pad">Point at the ring, hold the trigger and drag.</string>
+    <string name="how_to_watch_hand">The teacher\'s hand signs beside the window. Drag the Turn slider on the page to see it from another side.</string>
+    <string name="how_to_watch_pad">Point at the slider, hold the trigger and drag.</string>
     <string name="how_to_follow">Follow</string>
     <string name="how_to_follow_hand">Raise your hand into the see-through hand and copy it. When it fits, the next sign comes by itself.</string>
     <string name="how_to_follow_pad">Put the controllers down: following needs your bare hand.</string>
