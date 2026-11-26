@@ -93,6 +93,11 @@ class SignViewModel(application: Application) : AndroidViewModel(application) {
         act { hint(key) }
     }
 
+    fun fingers(code: String?) {
+        if (code == flow.state.fingers) return
+        act { fingers(code) }
+    }
+
     // ------------------------------------------------------------------------------------ panel side
 
     fun chooseHand(h: Handed) = act { chooseHand(h, now()) }

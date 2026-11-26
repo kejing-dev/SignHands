@@ -46,6 +46,18 @@ class Copy(val lang: Lang) {
 
     fun reviewToday(n: Int) = t("今天复习 $n 个", "Review $n today")
     val noReview get() = t("今天没有要复习的", "Nothing to review today")
+
+    // v0.3.0 home "today", finger chips, combo, word progress
+    val today get() = t("今天", "Today")
+    fun streak(n: Int) = if (n <= 0) t("今天开始练吧", "Start your streak today") else t("连续练了 $n 天", "$n-day streak")
+    fun dueLine(n: Int) = if (n <= 0) t("今天没有要复习的", "Nothing to review") else t("$n 个字母该复习了", "$n letters to review")
+    val lettersRing get() = t("字母", "Letters")
+    val wordsRing get() = t("常用词", "Words")
+    fun continueLesson(n: Int, letters: String) = t("继续 第 $n 课 · $letters", "Continue lesson $n · $letters")
+    val allLessonsDone get() = t("五课都学完了 · 去学常用词", "All lessons done · Learn words")
+    val fingerShort: List<String> get() = if (en) listOf("Th", "In", "Mi", "Ri", "Pi", "Pa") else listOf("拇", "食", "中", "无", "小", "掌")
+    fun combo(n: Int) = t("连续做对 $n 个", "$n right in a row")
+    fun learnedOf(k: Int, n: Int) = t("已学 $k / $n", "Learned $k / $n")
     fun lesson(n: Int) = t("第 $n 课", "Lesson $n")
     val spellWords get() = t("拼词", "Spell words")
     val alphabet get() = t("字母表", "Alphabet")

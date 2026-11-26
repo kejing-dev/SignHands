@@ -1,6 +1,10 @@
 package io.embodit.signhands.ui.panels
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
@@ -238,6 +242,11 @@ private fun TrackingOff(state: UiState, vm: SignViewModel, c: Copy) {
 
 // ----------------------------------------------------------------------------------------------- S04
 
+/**
+ * v0.3.0 (polish M2; reviewers: "交互和UI需要优化，目前像是个demo" / "界面过于单一"): the home page is "today": two progress
+ * rings (letters, words), the streak and what is due, one big "next step" button (review, else the next lesson, else
+ * the words), the five lessons + spelling, the alphabet and the words.
+ */
 @Composable
 private fun Home(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
     val due = state.progress.due(vm.today).size
@@ -248,23 +257,66 @@ private fun Home(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook) {
             Button(onClick = { vm.recheck(io.embodit.signhands.platform.SignGraph.hands.support()) }, modifier = Modifier.fillMaxWidth().then(NoFocus), colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary)) {
                 Text(c.watchOnlyBanner, maxLines = 1)
             }
+        } else {
+            TodayCard(state, vm, c, due)
         }
-        if (due > 0 && !state.watchOnly) PrimaryButton(c.reviewToday(due.coerceAtMost(Srs.REVIEW_MAX)), { vm.startReview() }, Modifier.fillMaxWidth())
-        else Box(modifier = Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.CenterStart) { Small(c.noReview) }
-        for (row in 0 until 3) {
+        when {
+            due > 0 && !state.watchOnly -> PrimaryButton(c.reviewToday(due.coerceAtMost(Srs.REVIEW_MAX)), { vm.startReview() }, Modifier.fillMaxWidth())
+            next > 0 -> {
+                val def = book.lessons.firstOrNull { it.n == next }
+                val what = if (def == null || def.words.isNotEmpty()) c.spellWords else def.letters.joinToString(" ")
+                PrimaryButton(c.continueLesson(next, what), { vm.openLesson(next) }, Modifier.fillMaxWidth())
+            }
+            else -> PrimaryButton(c.allLessonsDone, { vm.openWords() }, Modifier.fillMaxWidth())
+        }
+        for (row in 0 until 2) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                for (col in 0 until 2) {
-                    val n = row * 2 + col + 1
-                    LessonCell(n, state, book, c, highlighted = n == next, modifier = Modifier.weight(1f)) { vm.openLesson(n) }
+                for (col in 0 until 3) {
+                    val n = row * 3 + col + 1
+                    LessonCell(n, state, book, c, highlighted = false, modifier = Modifier.weight(1f)) { vm.openLesson(n) }
                 }
             }
         }
         Spacer(modifier = Modifier.weight(1f))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             SecondaryButton(c.alphabet, { vm.openAlphabet() }, Modifier.weight(1f))
-            // v0.1.3 (profile B18): everyday word signs
-            PrimaryButton(c.words + " · " + c.wordCount(Signs.all.size), { vm.openWords() }, Modifier.weight(1f))
+            SecondaryButton(c.words + " · " + c.wordCount(Signs.all.size), { vm.openWords() }, Modifier.weight(1f))
         }
+    }
+}
+
+/** v0.3.0: the two rings and the streak / due lines. */
+@Composable
+private fun TodayCard(state: UiState, vm: SignViewModel, c: Copy, due: Int) {
+    Row(modifier = Modifier.fillMaxWidth().height(96.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        ProgressRing(state.progress.lettersLearned, 26, c.lettersRing)
+        ProgressRing(state.progress.wordsLearned, Signs.all.size, c.wordsRing)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(c.today, style = PicoTheme.typography.titleMedium, maxLines = 1)
+            Text(c.streak(state.progress.streak(vm.today)), style = PicoTheme.typography.bodyMedium, color = if (state.progress.streak(vm.today) > 0) SignColors.Jade else PicoTheme.colorScheme.labelSecondary, maxLines = 1)
+            Text(c.dueLine(due), style = PicoTheme.typography.bodyMedium, color = PicoTheme.colorScheme.labelSecondary, maxLines = 1)
+        }
+    }
+}
+
+/** A ring that fills with [k] of [n] (Compose foundation Canvas, no Material), the count inside, [label] under it. */
+@Composable
+private fun ProgressRing(k: Int, n: Int, label: String) {
+    val frac = if (n <= 0) 0f else (k.toFloat() / n).coerceIn(0f, 1f)
+    val track = PicoTheme.colorScheme.labelTertiary
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Box(modifier = Modifier.size(70.dp), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.size(70.dp)) {
+                val w = 7.dp.toPx()
+                val inset = w / 2f
+                val arc = androidx.compose.ui.geometry.Size(size.width - w, size.height - w)
+                val tl = androidx.compose.ui.geometry.Offset(inset, inset)
+                drawArc(track, 0f, 360f, false, topLeft = tl, size = arc, style = Stroke(width = w))
+                if (frac > 0f) drawArc(SignColors.Jade, -90f, 360f * frac, false, topLeft = tl, size = arc, style = Stroke(width = w, cap = StrokeCap.Round))
+            }
+            Text("$k", style = PicoTheme.typography.titleMedium, maxLines = 1)
+        }
+        Text("$label · $n", style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelSecondary, maxLines = 1)
     }
 }
 
@@ -380,10 +432,28 @@ private fun Follow(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook)
         } else {
             Text(if (moving) c.moveFit else c.fitHint, style = PicoTheme.typography.bodyLarge, maxLines = 2)
         }
+        // v0.3.0: which finger is off, live (thumb .. pinky, palm); the combo once two in a row are right
+        if (state.screen == Screen.S06) FingerChips(state.fingers, c)
+        if (state.combo >= 2) Text(c.combo(state.combo), style = PicoTheme.typography.titleMedium, color = SignColors.Jade, maxLines = 1)
         Spacer(modifier = Modifier.weight(1f))
         ButtonsRow {
             SecondaryButton(c.watchAgain, { vm.watchAgain() }, Modifier.weight(1f))
             PrimaryButton(c.next, { vm.nextLetter() })
+        }
+    }
+}
+
+/** v0.3.0 live finger chips: jade = right, coral = off, grey = not judged / no hand yet. */
+@Composable
+private fun FingerChips(code: String?, c: Copy) {
+    Row(modifier = Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { // gate:allow button-gap status chips, not buttons
+        c.fingerShort.forEachIndexed { i, name ->
+            val s = code?.getOrNull(i) ?: '-'
+            val bg = when (s) { 'o' -> SignColors.Jade; 'x' -> SignColors.Coral; else -> Color(0x33000000) }
+            val ink = when (s) { 'o', 'x' -> Color(0xFF14121A); else -> PicoTheme.colorScheme.labelSecondary }
+            Box(modifier = Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(18.dp)).background(bg), contentAlignment = Alignment.Center) {
+                Text(name, style = PicoTheme.typography.labelLarge, color = ink, maxLines = 1)
+            }
         }
     }
 }
@@ -538,7 +608,12 @@ private fun WordsPage(state: UiState, vm: SignViewModel, c: Copy) {
             RoundIcon(R.drawable.ic_back, c.back) { vm.setTheme(themes[(i - 1 + themes.size) % themes.size]) }
             Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(if (c.en) state.theme.en else state.theme.zh, style = PicoTheme.typography.titleMedium, maxLines = 1)
-                Text("${i + 1} / ${themes.size} · ${c.wordCount(words.size)}", style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelSecondary, maxLines = 1)
+                val learned = words.count { it.key in state.progress.followed }
+                Text("${i + 1} / ${themes.size} · ${c.learnedOf(learned, words.size)}", style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelSecondary, maxLines = 1)
+                // v0.3.0: the theme's progress bar
+                Box(modifier = Modifier.padding(top = 4.dp).width(160.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(PicoTheme.colorScheme.labelTertiary)) {
+                    Box(modifier = Modifier.fillMaxWidth(if (words.isEmpty()) 0f else learned / words.size.toFloat()).height(4.dp).background(SignColors.Jade))
+                }
             }
             Box(modifier = Modifier.graphicsLayer(scaleX = -1f)) { RoundIcon(R.drawable.ic_back, c.next) { vm.setTheme(themes[(i + 1) % themes.size]) } }
         }

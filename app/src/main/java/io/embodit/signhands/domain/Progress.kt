@@ -13,8 +13,29 @@ data class Progress(
     val lastLesson: Int = 0,
     /** Letters followed correctly at least once (outside the quiz): "learned" for the lesson entry rule. */
     val followed: Set<String> = emptySet(),
+    /** v0.3.0: epoch days with at least one sign done right (the home page's streak). */
+    val activeDays: Set<Long> = emptySet(),
 ) {
     fun record(l: String): LetterRecord = letters[l] ?: LetterRecord()
+
+    /** v0.3.0: days in a row with practice, ending today (or yesterday: today's practice has not happened yet). */
+    fun streak(today: Long): Int {
+        var d = if (today in activeDays) today else today - 1
+        var n = 0
+        while (d in activeDays) {
+            n++
+            d--
+        }
+        return n
+    }
+
+    /** v0.3.0: letters followed right at least once (A-Z), word signs followed right at least once. */
+    val lettersLearned: Int
+        get() = followed.count { it.length == 1 }
+    val wordsLearned: Int
+        get() = followed.count { it.startsWith("w:") }
+
+    fun practised(today: Long): Progress = if (today in activeDays) this else copy(activeDays = activeDays + today)
 
     fun due(today: Long): List<String> = letters.filter { (_, r) -> r.box > 0 && r.due <= today }.keys.sorted()
 
@@ -28,6 +49,7 @@ data class Progress(
         o.put("lessons", le)
         o.put("lastLesson", lastLesson)
         o.put("followed", org.json.JSONArray(followed.sorted()))
+        o.put("activeDays", org.json.JSONArray(activeDays.sorted().takeLast(400)))
         return o.toString()
     }
 
@@ -50,7 +72,9 @@ data class Progress(
             }
             val followed = HashSet<String>()
             o.optJSONArray("followed")?.let { a -> for (i in 0 until a.length()) followed += a.getString(i) }
-            return Progress(letters, lessons, o.optInt("lastLesson"), followed)
+            val days = HashSet<Long>()
+            o.optJSONArray("activeDays")?.let { a -> for (i in 0 until a.length()) days += a.getLong(i) }
+            return Progress(letters, lessons, o.optInt("lastLesson"), followed, days)
         }
     }
 }

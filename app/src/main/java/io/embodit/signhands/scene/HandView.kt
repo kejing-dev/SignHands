@@ -89,7 +89,8 @@ internal class HandView(val name: String, model: Entity, private val shared: Sha
             } else {
                 PhysicallyBasedMaterial.create(BlendingMode.OPAQUE).apply {
                     setBaseColor((if (group == GROUPS - 1) SignColors.Skin else SignColors.Skin).color4())
-                    setRoughness(0.58f)
+                    // v0.3.0: a little more sheen (skin, not clay)
+                    setRoughness(0.42f)
                     setMetallic(0f)
                 }
             }

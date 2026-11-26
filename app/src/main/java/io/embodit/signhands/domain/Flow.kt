@@ -92,6 +92,13 @@ data class UiState(
     val armedUntilMs: Long = 0L,
     /** Hint key shown on the hand label (worst item). */
     val hint: String? = null,
+    /**
+     * v0.3.0 live finger chips on the follow page: thumb, index, middle, ring, pinky, palm; 'o' right, 'x' off,
+     * '-' not judged. Written by the scene at <= 10 Hz, null when no hand is judged.
+     */
+    val fingers: String? = null,
+    /** v0.3.0: signs done right in a row in this sitting (reset by "Next" without a match, "Show me", a miss). */
+    val combo: Int = 0,
     val done: LessonDone? = null,
     val reviewDone: ReviewDone? = null,
     /** The word just spelled (lesson 6), shown on the hand label for a moment. */
@@ -229,7 +236,7 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     fun openSettings(now: Long) = go(Screen.S14, now)
 
     fun home(now: Long) {
-        set(state.copy(course = null, quiz = null, lostFrom = null, aboutOpen = false, howToOpen = false))
+        set(state.copy(course = null, quiz = null, lostFrom = null, aboutOpen = false, howToOpen = false, combo = 0, fingers = null))
         go(Screen.S04, now)
     }
 
@@ -287,14 +294,15 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
             Screen.S06 -> {
                 val l = followedKey() ?: return
                 effects += Effect.Ding
-                set(state.copy(progress = state.progress.copy(followed = state.progress.followed + l)))
+                val today = todayProvider()
+                set(state.copy(progress = state.progress.copy(followed = state.progress.followed + l).practised(today), combo = state.combo + 1, fingers = null))
                 effects += Effect.SaveProgress
                 go(Screen.S07, now)
             }
             Screen.S09 -> {
                 effects += Effect.Ding
                 val q = state.quiz ?: return
-                go(Screen.S10, now, "a", state.copy(quiz = q.copy(reveal = Reveal.RIGHT)))
+                go(Screen.S10, now, "a", state.copy(quiz = q.copy(reveal = Reveal.RIGHT), progress = state.progress.practised(todayProvider()), combo = state.combo + 1))
             }
             else -> Unit
         }
@@ -316,7 +324,7 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     fun nextLetter(now: Long) {
         if (state.screen != Screen.S06 && state.screen != Screen.S08) return
         val l = followedKey() ?: return
-        set(state.copy(progress = state.progress.copy(followed = state.progress.followed + l)))
+        set(state.copy(progress = state.progress.copy(followed = state.progress.followed + l), combo = 0))
         effects += Effect.SaveProgress
         advance(now, Mark.OK)
     }
@@ -324,6 +332,7 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
     /** v0.1.1 S09 "Show me": one tap, shows the teacher's hand (S10b). */
     fun showAnswer(now: Long) {
         if (state.screen != Screen.S09) return
+        set(state.copy(combo = 0))
         giveUp(now)
     }
 
@@ -523,6 +532,10 @@ class Flow(private val book: LetterBook, private val random: (Int) -> Int = { n 
 
     fun hint(key: String?) {
         if (key != state.hint) set(state.copy(hint = key))
+    }
+
+    fun fingers(code: String?) {
+        if (code != state.fingers) set(state.copy(fingers = code))
     }
 
     // --------------------------------------------------------------------------------------- settings

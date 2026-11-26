@@ -106,6 +106,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     private val watch = HashMap<Handed, HandView>()
     private var modelsDone = false
     private var hintRing: ModelEntity? = null
+    /** v0.3.0: the jade ring that bursts round the hand when a sign is done right (S07). */
+    private var burst: ModelEntity? = null
     private var arrow: ModelEntity? = null
     private val trail = ArrayList<ModelEntity>()
     private var lastLoosen = -1L
@@ -293,6 +295,12 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     }
 
     private fun queueBuild(root: Entity) {
+        work += "burst" to {
+            burst = ModelEntity(Meshes.ring(0.92f, 1f, "burst", segments = 64), unlit(shared, SignColors.Jade, BlendingMode.TRANSPARENT, opacity = 0.7f, twoSided = true, depthWrite = false)).also {
+                root.addChild(it)
+                it.setVisible(false)
+            }
+        }
         work += "hint" to {
             hintRing = ModelEntity(Meshes.ring(0.004f, 0.006f, "hintRing", segments = 32), unlit(shared, SignColors.Coral, twoSided = true, depthWrite = false)).also {
                 root.addChild(it)
@@ -548,11 +556,24 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         if (now - lastHintMs >= HINT_MS) {
             lastHintMs = now
             vm.hint(hintKey)
+            vm.fingers(fingerCode(v))
             if (s.screen == Screen.SPIKE) {
                 spikeText.value = "${j.target.key}  ${(j.share() * 100).toInt()}% tier=${j.tier}" + (if (j.target.moving) " move=${"%.2f".format(j.moveRatio)} ${j.moveHint ?: ""}" else "") + "\n" +
                     v.items.joinToString("  ") { "${it.item.key}=${"%.2f".format(it.ratio)}" } + "\n" + f.line()
             }
         }
+    }
+
+    /** v0.3.0 finger chips: thumb, index, middle, ring, pinky, palm as 'o' (in) / 'x' (off) / '-' (not judged). */
+    private fun fingerCode(v: FrameVerdict): String {
+        val sb = StringBuilder()
+        for (f in listOf(Finger.THUMB, Finger.INDEX, Finger.MIDDLE, Finger.RING, Finger.PINKY)) {
+            val rs = v.items.filter { it.item.finger == f }
+            sb.append(if (rs.isEmpty()) '-' else if (rs.all { it.inside }) 'o' else 'x')
+        }
+        val palm = v.items.filter { it.item.kind == ItemKind.PALM }
+        sb.append(if (palm.isEmpty()) '-' else if (palm.all { it.inside }) 'o' else 'x')
+        return sb.toString()
     }
 
     private fun accumulate(f: Features) {
@@ -606,6 +627,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
                 else -> false
             }
         view.setVisible(shown)
+        if (s.screen != Screen.S07) burst?.setVisible(false)
         if (!shown) return
         val l = if (s.screen == Screen.S01) book["OPEN"] else letter ?: return
         view.pose(l.clipStart + HOLD_AT)
@@ -641,6 +663,17 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             Screen.S07 -> {
                 view.tint(emptyMap(), if (sinceEnter < 0.4f) 1f else 0f, breath)
                 view.fade(if (sinceEnter < 0.4f) 1f else (1f - (sinceEnter - 0.4f) / 0.6f).coerceIn(0f, 1f))
+                // v0.3.0: a jade ring bursts out round the hand (0.6 s)
+                burst?.let { b ->
+                    val k = (sinceEnter / BURST_SEC).coerceIn(0f, 1f)
+                    b.setVisible(k < 1f)
+                    if (k < 1f) {
+                        val r = 0.05f + 0.13f * smoothstep(k)
+                        val centre = wrist + rotation.rotate(V3(0f, 0.45f * modelScale * book.modelHandLength, 0f))
+                        val head = headPractice.origin
+                        b.setLocal(position = centre, rotation = faceHead(centre, head) * Q4.pitch(90f), scale = V3(r, r, r))
+                    }
+                }
             }
             Screen.S10 -> {
                 val miss = s.quiz?.missKey
@@ -699,7 +732,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val motionSec = Motion.seconds(l.motion)
         val cycle = MORPH + motionSec + WATCH_HOLD + 0.3f
         if (watchT > cycle) watchT = 0f
-        val u = (watchT / MORPH).coerceIn(0f, 1f)
+        // v0.3.0: eased (slow in, slow out) instead of linear, so the fingers settle into the shape
+        val u = smoothstep((watchT / MORPH).coerceIn(0f, 1f))
         view.pose(l.clipStart + book.morphSec * u)
         // turn: default 3/4 angle, + the window's "转动" slider (v0.1.7), + "from the front" (180), eased
         val target = defaultTurn(l.l) + s.turn + if (s.opposite) 180f else 0f
@@ -767,7 +801,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         val moveSec = Performer.SIGN_MS / 1000f
         val cycle = MORPH + moveSec + WATCH_HOLD + 0.3f
         if (watchT > cycle) watchT = 0f
-        val u = (watchT / MORPH).coerceIn(0f, 1f)
+        // v0.3.0: eased (slow in, slow out) instead of linear, so the fingers settle into the shape
+        val u = smoothstep((watchT / MORPH).coerceIn(0f, 1f))
         view.pose(shape.clipStart + book.morphSec * u)
         val target = SIGN_TURN + s.turn + if (s.opposite) 180f else 0f
         val step = 180f / 0.4f * dt
@@ -949,6 +984,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         /** The point of the signer's body (head frame) that sits on the watch spot. */
         private val SIGN_CENTRE = V3(0.02f, -0.14f, -0.18f)
         const val SHOW_FRAMES = 2L
+        const val BURST_SEC = 0.6f
         const val FAST_FRAME_SEC = 0.04f
         const val SLOW_GAP_MS = 1500L
         const val PARK = 0.001f
