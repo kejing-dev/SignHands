@@ -19,11 +19,11 @@ class WordsTest {
         for (s in Signs.all) {
             assertTrue("${s.id} shape ${s.shape}", book.letters.containsKey(s.shape))
             s.base?.let { assertTrue("${s.id} base ${it.shape}", book.letters.containsKey(it.shape)) }
-            assertTrue("${s.id} path", s.path.size >= 2 && s.path.first() == V3.ZERO && Trajectory.extent(s.path) >= 0.03f)
+            assertTrue("${s.id} path", s.path.first() == V3.ZERO && (s.still || (s.path.size >= 2 && Trajectory.extent(s.path) >= 0.03f)))
             assertTrue("${s.id} tips", s.tipZh.isNotBlank() && s.tipEn.isNotBlank() && s.zh.isNotBlank())
             // every word is judged: a path and a hand shape
             val t = Target.of(s, book)
-            assertTrue(t.moving && t.template.size == Trajectory.N && CareMask.items(t).isNotEmpty())
+            assertTrue(s.id, CareMask.items(t).isNotEmpty() && (if (s.still) !t.moving else t.moving && t.template.size == Trajectory.N))
         }
     }
 

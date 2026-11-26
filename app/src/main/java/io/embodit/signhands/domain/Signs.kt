@@ -20,6 +20,8 @@ enum class Theme(val zh: String, val en: String) {
     FEEL("情绪", "Feelings"),
     VERB("常用动词", "Verbs"),
     QUESTION("问句", "Questions"),
+    /** v0.4.0 (polish M3): numbers 0-10, the first theme with the new handshapes (3, 4, 7, 8). */
+    NUMBERS("数字", "Numbers"),
 }
 
 /** The non-dominant hand of a two-handed sign: a resting shape at a spot (head frame, right-hand terms, mirrored). */
@@ -43,6 +45,10 @@ data class Sign(
 ) {
     val en: String
         get() = id.replace('_', ' ')
+
+    /** v0.4.0: a sign held still (numbers): judged like a still letter, shape + palm, no path. */
+    val still: Boolean
+        get() = path.size < 2
 
     fun tip(lang: Lang): String = if (lang == Lang.EN) tipEn else tipZh
 
@@ -163,6 +169,8 @@ object Signs {
                 "L 手从脸颊往下，落在另一只 L 手上", "L hand from your jaw down onto your other L hand", base("L", Pose.SIDE_FWD)),
             Sign("BROTHER", "兄弟", Theme.FAMILY, "L", Pose.SIDE_FWD, Pose.FOREHEAD, listOf(Z, v(-0.09f, -0.33f, -0.13f)),
                 "L 手从额头往下，落在另一只 L 手上", "L hand from your forehead down onto your other L hand", base("L", Pose.SIDE_FWD)),
+            Sign("HOME", "家", Theme.FAMILY, "FLATO", Pose.TO_MOUTH, Pose.MOUTH + v(0.02f, -0.01f, -0.04f), listOf(Z, v(0.06f, 0.03f, 0.02f)),
+                "指尖捏拢先碰嘴角，再碰脸颊", "Fingertips together, touch the corner of your mouth, then your cheek"),
             Sign("BABY", "宝宝", Theme.FAMILY, "B", Pose.UP, Pose.SPACE + v(-0.02f, -0.02f, 0.04f), listOf(Z, v(-0.08f, 0.03f, 0f), Z),
                 "两臂像抱着宝宝一样左右摇", "Cradle your arms and rock side to side", base("B", Pose.UP)),
             Sign("FAMILY", "家庭", Theme.FAMILY, "F", Pose.FWD, Pose.SPACE + v(-0.03f, 0.06f, 0f), listOf(Z, v(0.06f, 0f, 0.03f), v(0.07f, 0f, 0.09f), v(0.03f, 0f, 0.13f)),
@@ -200,6 +208,8 @@ object Signs {
             Sign("NIGHT", "晚上", Theme.TIME, "B", Pose.DOWN, Pose.SPACE + v(0f, 0.08f, 0f), listOf(Z, v(-0.06f, -0.06f, 0f)),
                 "弯着的手掌朝下，在另一只手腕上像太阳一样落下", "Bent hand, palm down, set over your other wrist like the sun", base("B", Pose.DOWN_ACROSS)),
             // ---------------------------------------------------------------- feelings
+            Sign("I_LOVE_YOU", "我爱你", Theme.FEEL, "ILY", Pose.FWD, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z, v(0f, 0.04f, -0.04f)),
+                "拇指、食指、小指伸出，掌心朝前向外一送", "Thumb, index and pinky out, palm forward, push it out a little"),
             Sign("HAPPY", "开心", Theme.FEEL, "B", Pose.CHEST, Pose.CHEST_AT + v(0f, -0.03f, 0f), listOf(Z, v(0f, 0.1f, -0.04f)),
                 "手掌在胸前往上刷两下", "Flat hand brushes up your chest"),
             Sign("SAD", "难过", Theme.FEEL, "OPEN", Pose.IN, Pose.EYES + v(0.02f, 0f, -0.06f), listOf(Z, v(0f, -0.16f, -0.02f)),
@@ -208,7 +218,7 @@ object Signs {
                 "两手握拳交叉，抱在胸前", "Cross your fists over your chest, like a hug", base("S", Pose.CHEST, Pose.CHEST_AT + v(-0.04f, 0.0f, -0.04f))),
             Sign("LIKE", "喜欢", Theme.FEEL, "OPEN", Pose.CHEST, Pose.CHEST_AT, listOf(Z, v(0.01f, 0.01f, -0.13f)),
                 "拇指和中指从胸口向外拉出，边拉边捏拢", "Thumb and middle finger pull out from your chest and pinch"),
-            Sign("ANGRY", "生气", Theme.FEEL, "OPEN", Pose.IN, Pose.CHEST_AT + v(0f, -0.04f, 0f), listOf(Z, v(0f, 0.13f, -0.06f)),
+            Sign("ANGRY", "生气", Theme.FEEL, "CLAW", Pose.IN, Pose.CHEST_AT + v(0f, -0.04f, 0f), listOf(Z, v(0f, 0.13f, -0.06f)),
                 "手指弯成爪，从肚子往上往外拉", "Clawed hand pulls up and out from your stomach"),
             Sign("TIRED", "累", Theme.FEEL, "B", Pose.CHEST, Pose.CHEST_AT + v(0.05f, 0.05f, 0f), listOf(Z, v(0f, -0.05f, -0.03f)),
                 "两手指尖搭在胸口，往下一垂", "Fingertips on your chest, let your hands droop", base("B", Pose.CHEST, Pose.CHEST_AT + v(0.01f, 0.05f, 0f))),
@@ -244,8 +254,36 @@ object Signs {
                 "手指碰额头，向外拉出变成 Y", "Touch your forehead, pull out into a Y"),
             Sign("WHEN", "什么时候", Theme.QUESTION, "D", Pose.FWD, Pose.SPACE + v(0f, 0.08f, 0f), circle(0.04f) + listOf(v(-0.02f, -0.05f, 0f)),
                 "食指绕一圈，落在另一只食指尖上", "Index circles once, lands on your other index", base("D", Pose.FWD)),
+            // ---------------------------------------------------------------- v0.4.0 (M3) words with the new handshapes
+            Sign("PLAY", "玩", Theme.VERB, "Y", Pose.FWD, Pose.SPACE + v(0f, 0.06f, 0f), shake(0.04f),
+                "手比 Y（拇指和小指伸出），手腕左右摇", "Y hand (thumb and pinky out), twist your wrist side to side", base("Y", Pose.FWD, Pose.BASE_SPOT + v(0f, 0.06f, 0f))),
+            Sign("SIT", "坐", Theme.VERB, "BENTV", Pose.DOWN, Pose.SPACE + v(-0.03f, 0.08f, 0f), tap(0f, -0.05f, 0f),
+                "食指中指弯成小板凳，落在另一只手的两指上", "Bent index and middle sit down on your other two fingers", base("H", Pose.DOWN)),
             Sign("HOW", "怎么", Theme.QUESTION, "A", Pose.DOWN, Pose.SPACE + v(-0.02f, 0.02f, 0f), listOf(Z, v(0f, 0.04f, -0.05f)),
                 "两手指背相对，向前翻上来", "Backs of your bent fingers together, roll them forward and up", base("A", Pose.DOWN)),
+            // ---------------------------------------------------------------- v0.4.0 numbers (held still; 10 shakes)
+            Sign("ZERO", "零", Theme.NUMBERS, "O", Pose.SIDE, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "五指弯成圆圈，像字母 O", "Fingers round into a circle, like O"),
+            Sign("ONE", "一", Theme.NUMBERS, "Z", Pose.IN, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "食指竖起，掌心朝自己", "Index up, palm towards you"),
+            Sign("TWO", "二", Theme.NUMBERS, "V", Pose.IN, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "食指中指竖起分开，掌心朝自己", "Index and middle up and apart, palm towards you"),
+            Sign("THREE", "三", Theme.NUMBERS, "3", Pose.IN, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "拇指、食指、中指伸出", "Thumb, index and middle out"),
+            Sign("FOUR", "四", Theme.NUMBERS, "4", Pose.IN, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "四指伸直分开，拇指收进掌心", "Four fingers up and apart, thumb folded in"),
+            Sign("FIVE", "五", Theme.NUMBERS, "OPEN", Pose.IN, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "五指全部张开", "All five fingers spread"),
+            Sign("SIX", "六", Theme.NUMBERS, "W", Pose.FWD, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "拇指碰小指尖，其余三指竖起", "Thumb touches your pinky tip, three fingers up"),
+            Sign("SEVEN", "七", Theme.NUMBERS, "7", Pose.FWD, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "拇指碰无名指尖，其余三指竖起", "Thumb touches your ring fingertip, the others up"),
+            Sign("EIGHT", "八", Theme.NUMBERS, "8", Pose.FWD, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "拇指碰中指尖，其余三指竖起", "Thumb touches your middle fingertip, the others up"),
+            Sign("NINE", "九", Theme.NUMBERS, "F", Pose.FWD, Pose.SPACE + v(0f, 0.12f, 0f), listOf(Z),
+                "拇指碰食指尖，其余三指竖起（像 F）", "Thumb touches your index tip, the others up (like F)"),
+            Sign("TEN", "十", Theme.NUMBERS, "A", Pose.SIDE, Pose.SPACE + v(0f, 0.12f, 0f), shake(0.03f),
+                "握拳拇指朝上，手腕左右摇两下", "Fist with the thumb up, twist your wrist twice"),
         )
 
     val byId: Map<String, Sign> = all.associateBy { it.id }

@@ -1,8 +1,19 @@
 # 手语老师 Sign Hands — project notes for agents
 
-PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.2.0.
+PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.4.0.
 A translucent teacher's hand sits on your own hand and forms the 26 ASL letters; learned letters come back on a
 Leitner schedule. v0.1.3 adds 59 everyday ASL word signs in 9 themes.
+
+**v0.4.0 (polish M3: handshape framework + samples)**
+- `tools/bake_hands.py` `EXTRA`: handshapes beyond A-Z appended after Z (clip segments 27..): 3, 4, 7, 8, ILY, CLAW, FLATO,
+  BENTV (numbers 0 = O, 1 = Z held still, 2 = V, 5 = OPEN, 6 = W, 9 = F, 10 = A). Re-bake after adding one; the letters
+  A-Z and OPEN are byte-identical. They are rivals in the judge too; the label calls them "数字 X" / "另一个手型".
+- Still word signs (`Sign.still`, path = one point, e.g. the numbers): judged like a still letter (shape + the sign's
+  palm, held 0.3 s), no path. A word sign's palm item uses `Sign.orient`; its rival check compares shapes only.
+- New theme NUMBERS (ZERO .. TEN) and words I_LOVE_YOU (ILY), PLAY (Y), SIT (BENTV), HOME (FLATO); ANGRY now uses CLAW.
+  C / CLAW are one tracker group (C passed as ANGRY). 74 signs; wrong-hand gate 0 / 2285; sloppy gate 16 recordings.
+- The catalogue stays a Kotlin DSL (`domain/Signs.kt`, generators tap / circle / shake) checked by `WordsTest` instead of
+  the planned JSON file: words are added here by the polish station, and the DSL keeps the paths short.
 
 **v0.2.0 (polish M1; reviewers on v0.1.5: "错误的手势也能通过" / "我随便张手或者握拳，就过了")** — forgiving for a right
 hand done sloppily, strict for a wrong one (`domain/Matcher.kt`):

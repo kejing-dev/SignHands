@@ -109,7 +109,8 @@ enum class Track { PALM, INDEX_TIP, PINKY_TIP }
 /** What is judged: a letter (still, or J / Z), or a word sign (always moving). [shape] is the hand pose compared. */
 class Target private constructor(val letter: Letter?, val sign: Sign?, val shape: Letter) {
     val key: String = sign?.id ?: shape.l
-    val moving: Boolean = sign != null || letter?.motion != null
+    /** v0.4.0: a still word sign (numbers) is judged like a still letter. */
+    val moving: Boolean = (sign != null && !sign.still) || letter?.motion != null
     val track: Track =
         when {
             sign != null -> Track.PALM
@@ -120,13 +121,13 @@ class Target private constructor(val letter: Letter?, val sign: Sign?, val shape
     /** The path (head frame, right hand, metres, absolute for signs / relative for J and Z). */
     val path: List<V3> =
         when {
-            sign != null -> Trajectory.polyline(sign.path.map { sign.at + it })
+            sign != null && !sign.still -> Trajectory.polyline(sign.path.map { sign.at + it })
             letter?.motion != null -> (0..32).map { Motion.offset(letter.motion, it / 32f) }
             else -> emptyList()
         }
     val template: List<V3> = if (moving) Trajectory.template(path) else emptyList()
     val minMove: Float = if (moving) max(Tolerance.MIN_MOVE_M, Trajectory.extent(path) * Tolerance.MIN_MOVE_SHARE) else 0f
-    val placeCentre: V3? = sign?.let { path.fold(V3.ZERO) { a, p -> a + p } * (1f / path.size) }
+    val placeCentre: V3? = sign?.takeIf { moving }?.let { path.fold(V3.ZERO) { a, p -> a + p } * (1f / path.size) }
 
     companion object {
         fun of(letter: Letter): Target = Target(letter, null, letter)
@@ -151,7 +152,8 @@ object CareMask {
 
     fun items(target: Target): List<CareItem> {
         val shape = target.shape
-        val t = HandMath.templateFeatures(shape.joints.getValue("ok"), shape.orient)
+        // v0.4.0: a still word sign's palm faces the sign's way, not the letter's
+        val t = HandMath.templateFeatures(shape.joints.getValue("ok"), target.sign?.orient ?: shape.orient)
         val out = ArrayList<CareItem>()
         val key = keyFingers(t.flex)
         for (i in 0 until 4) {
@@ -460,7 +462,8 @@ class Rivals(book: LetterBook) {
 
     /** ratio = distance to the target's group / distance to the nearest rival (<= 1: the target is the nearest). */
     fun check(target: Target, f: Features): Result {
-        val palm = !target.moving
+        // a word sign's palm is the sign's, not the letter template's: compare the shapes only (its palm item checks it)
+        val palm = !target.moving && target.sign == null
         val grp = group(target.shape.l, palm)
         var dTarget = Float.MAX_VALUE
         var best = Float.MAX_VALUE
@@ -498,9 +501,10 @@ class Rivals(book: LetterBook) {
 
         /**
          * Shapes the tracker cannot tell apart: the fist letters with the thumb under the fingers (v0.1.3 finding), and
-         * R (crossed fingers) / U (side by side), where the crossing hides one finger behind the other.
+         * R (crossed fingers) / U (side by side), where the crossing hides one finger behind the other; v0.4.0 C / claw
+         * (the claw's bent tips and the C's curve read the same on the tracker: C passed as ANGRY, DRINK dropped to 70 %).
          */
-        val TRACKER_SAME = listOf(setOf("M", "N", "T"), setOf("R", "U"))
+        val TRACKER_SAME = listOf(setOf("M", "N", "T"), setOf("R", "U"), setOf("C", "CLAW"))
 
         fun distance(a: Features, b: Features, palm: Boolean): Float {
             var d = 0f

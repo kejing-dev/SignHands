@@ -40,6 +40,11 @@ class SloppyRecordingsTest {
             Rec("10-MOTHER-half-side-28-off-10cm", sign("MOTHER"), Sloppy(turnDeg = 28f, axis = vertical, offset = V3(0.1f, 0f, 0f), noiseMm = 3f)),
             Rec("11-PLEASE-slow-turned-15", sign("PLEASE"), Sloppy(turnDeg = 15f, axis = forward, slow = 2f, noiseMm = 3f)),
             Rec("12-WHERE-left-hand-off-10cm", sign("WHERE"), Sloppy(offset = V3(0f, 0f, -0.1f), turnDeg = 20f, axis = across, noiseMm = 3f), Handed.LEFT),
+            // v0.4.0 (M3): the new handshapes
+            Rec("13-THREE-turned-18", sign("THREE"), Sloppy(turnDeg = 18f, axis = forward, noiseMm = 3f)),
+            Rec("14-SEVEN-half-side-25", sign("SEVEN"), Sloppy(turnDeg = 25f, axis = vertical, noiseMm = 3f)),
+            Rec("15-I_LOVE_YOU-slow-off-10cm", sign("I_LOVE_YOU"), Sloppy(slow = 2f, offset = V3(0.1f, 0f, 0f), noiseMm = 3f)),
+            Rec("16-HOME-turned-15", sign("HOME"), Sloppy(turnDeg = 15f, axis = across, noiseMm = 3f)),
         )
 
     private fun gauss(r: Random): Float {

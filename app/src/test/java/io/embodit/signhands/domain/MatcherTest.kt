@@ -18,7 +18,7 @@ class MatcherTest {
 
     @Test
     fun everyLetterIsJudged() {
-        assertEquals(26, letters.count { it.scored })
+        assertEquals(26, letters.count { it.scored && it.l.length == 1 && it.l[0].isLetter() })
         assertEquals(setOf("J", "Z"), letters.filter { Target.of(it).moving }.map { it.l }.toSet())
     }
 

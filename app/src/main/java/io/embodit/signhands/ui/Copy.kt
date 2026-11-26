@@ -188,7 +188,13 @@ class Copy(val lang: Lang) {
                     "in" -> t("往中间一点", "More to the middle")
                     else -> t("往外侧一点", "More to the side")
                 }
-            "like" -> if (p[1] == "OPEN") t("这更像张开的手", "That looks like an open hand") else t("这更像字母 ${p[1]}", "That looks like ${p[1]}")
+            "like" ->
+                when {
+                    p[1] == "OPEN" -> t("这更像张开的手", "That looks like an open hand")
+                    p[1].length == 1 && p[1][0].isDigit() -> t("这更像数字 ${p[1]}", "That looks like number ${p[1]}")
+                    p[1].length == 1 -> t("这更像字母 ${p[1]}", "That looks like ${p[1]}")
+                    else -> t("这更像另一个手型", "That looks like another handshape")
+                }
             "loosen" -> t("放宽了一点，再来", "Made it easier, try again")
             else -> null
         }

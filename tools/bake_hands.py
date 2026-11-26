@@ -85,7 +85,20 @@ L = {
     "Y": {"f": [f("F"), f("F"), f("F"), f("E")], "spread": [0, 0, 16], "thumb": "out", "o": "front"},
     "Z": {"f": [f("E"), f("F"), f("F"), f("F")], "spread": [0, 0, 0], "thumb": "across", "o": "front", "motion": "Z"},
 }
-ORDER = ["OPEN"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+# v0.4.0 (polish M3): handshapes beyond the alphabet, appended after Z so the letters keep their clip segments.
+# Numbers 3 / 4 / 7 / 8 (0 = O, 1 = Z held still, 2 = V, 5 = OPEN, 6 = W, 9 = F, 10 = A), I-love-you, claw, flat O, bent V.
+EXTRA = {
+    "3": {"f": [f("E"), f("E"), f("F"), f("F")], "spread": [14, 0, 0], "thumb": "out", "o": "front"},
+    "4": {"f": [f("E"), f("E"), f("E"), f("E")], "spread": [10, 8, 10], "thumb": "tuck", "o": "front"},
+    "7": {"f": [f("E"), f("E"), f("T", [10, 10, 10]), f("E")], "spread": [8, 8, 8], "thumb": "touch:ring", "o": "front"},
+    "8": {"f": [f("E"), f("T", [10, 10, 10]), f("E"), f("E")], "spread": [8, 8, 8], "thumb": "touch:middle", "o": "front"},
+    "ILY": {"f": [f("E"), f("F"), f("F"), f("E")], "spread": [0, 0, 16], "thumb": "out", "o": "front"},
+    "CLAW": {"f": [[10, 80, 60]] * 4, "spread": [10, 8, 10], "thumb": "C", "o": "front"},
+    "FLATO": {"f": [[55, 12, 6]] * 4, "spread": [0, 0, 0], "thumb": "touch:middle", "o": "side"},
+    "BENTV": {"f": [[10, 90, 60], [10, 90, 60], f("F"), f("F")], "spread": [14, 0, 0], "thumb": "across", "o": "front"},
+}
+L.update(EXTRA)
+ORDER = ["OPEN"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)] + list(EXTRA)
 THUMB_FIRST = set("MNTSEA")
 OFFS = ["thumb", "index", "middle", "ring", "pinky"]
 
@@ -537,9 +550,10 @@ def main():
             "joints": {"ok": [[round(float(c), 5) for c in p] for p in joints25(solve(pose))]},
         }
         if letter != "OPEN":
-            row = table[letter]
-            entry["tipZh"] = row["tipZh"]
-            entry["tipEn"] = row["tipEn"]
+            row = table.get(letter)
+            if row:
+                entry["tipZh"] = row["tipZh"]
+                entry["tipEn"] = row["tipEn"]
             for off in OFFS:
                 entry["joints"][off] = [[round(float(c), 5) for c in p] for p in joints25(solve(pose, off))]
         letters.append(entry)
