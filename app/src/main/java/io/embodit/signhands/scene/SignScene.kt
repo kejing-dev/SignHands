@@ -541,7 +541,8 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             hintHolder.force("loosen", now)
         }
         val worst = v.worst
-        val shapeKey = worst?.let { HintHolder.keyOf(it, j.letter) }
+        // v0.2.0: every item is in but the hand looks more like another shape -> "这更像 X"
+        val shapeKey = worst?.let { HintHolder.keyOf(it, j.letter) } ?: v.like?.let { "like:$it" }
         val pathKey = j.moveHint?.takeIf { it != "shape" && v.pass }
         val hintKey = hintHolder.offer(pathKey ?: shapeKey, now)
         if (now - lastHintMs >= HINT_MS) {

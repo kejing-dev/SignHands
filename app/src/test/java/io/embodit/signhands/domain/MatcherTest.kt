@@ -93,10 +93,15 @@ class MatcherTest {
     @Test
     fun fistLettersOnlyLookAtTheThumb() {
         // A: thumb beside; S: across; E / M / N / T: tucked. M, N and T pass each other (the tracker cannot see under the fingers)
-        val pass = listOf("M" to "N", "N" to "M", "M" to "T", "T" to "N", "E" to "M", "S" to "M")
+        val pass = listOf("M" to "N", "N" to "M", "M" to "T", "T" to "N")
         for ((target, shape) in pass) {
             val v = Judge(book[target]).frame(TestBook.features(FakeHand(shape), Handed.RIGHT))
             assertTrue("$shape as $target ${v.items.map { it.item.key to it.ratio }}", v.pass)
+        }
+        // v0.2.0 rival check: E (fingertips curled onto the thumb) and S (thumb across) are no longer an M, and the label names the look-alike
+        for ((target, shape) in listOf("E" to "M", "M" to "E", "M" to "S")) {
+            val v = Judge(book[target]).frame(TestBook.features(FakeHand(shape), Handed.RIGHT))
+            assertFalse("$shape as $target", v.pass)
         }
         // a thumb sticking out (L / Y thumb) is never a tucked-thumb letter
         val y = HandMath.templateFeatures(book["L"].joints.getValue("ok"), book["L"].orient)

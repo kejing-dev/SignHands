@@ -176,6 +176,7 @@ class Copy(val lang: Lang) {
                     "in" -> t("往中间一点", "More to the middle")
                     else -> t("往外侧一点", "More to the side")
                 }
+            "like" -> if (p[1] == "OPEN") t("这更像张开的手", "That looks like an open hand") else t("这更像字母 ${p[1]}", "That looks like ${p[1]}")
             "loosen" -> t("放宽了一点，再来", "Made it easier, try again")
             else -> null
         }

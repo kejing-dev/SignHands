@@ -128,8 +128,9 @@ object Performer {
         return (t / move.toFloat()).coerceAtMost(1f)
     }
 
-    fun joints(book: LetterBook, target: Target, handed: Handed, head: V3, headYaw: Float, ms: Long, sloppy: Sloppy = Sloppy(), noise: (() -> Float)? = null): List<V3> {
-        val shape = target.shape
+    fun joints(book: LetterBook, target: Target, handed: Handed, head: V3, headYaw: Float, ms: Long, sloppy: Sloppy = Sloppy(), wrongShape: Letter? = null, noise: (() -> Float)? = null): List<V3> {
+        // v0.2.0 wrong-hand recordings: the target's place / path / orientation done with another hand shape
+        val shape = wrongShape ?: target.shape
         val local = shape.joints.getValue("ok")
         val headRot = Q4.yaw(headYaw)
         val turn = Q4.axisAngle(headRot.rotate(sloppy.axis), sloppy.turnDeg)

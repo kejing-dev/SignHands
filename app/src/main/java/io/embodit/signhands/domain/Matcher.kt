@@ -10,14 +10,17 @@ enum class ItemKind { FINGER, SPREAD_APART, SPREAD_TOGETHER, THUMB_POS, THUMB_CL
 enum class Want { STRAIGHTER, BENT, NONE }
 
 /** One compared item of a target: [ratio] = deviation / (threshold x tier factor), so 1.0 is the edge. */
-data class CareItem(val key: String, val kind: ItemKind, val finger: Finger?, val threshold: Float, private val eval: (Features) -> Pair<Float, Want>) {
+data class CareItem(val key: String, val kind: ItemKind, val finger: Finger?, val threshold: Float, val essential: Boolean = false, private val eval: (Features) -> Pair<Float, Want>) {
     fun ratio(f: Features, mul: Float = 1f): Pair<Float, Want> = eval(f).let { (dev, want) -> dev / (threshold * mul) to want }
 }
 
 data class ItemResult(val item: CareItem, val ratio: Float, val want: Want, val inside: Boolean)
 
-/** [effective] is the ratio that decides the frame (after the one forgiven finger): <= 1 passes. */
-data class FrameVerdict(val pass: Boolean, val items: List<ItemResult>, val effective: Float = if (pass) 1f else 2f) {
+/**
+ * [effective] is the ratio that decides the frame (after the one forgiven finger): <= 1 passes. [like] (v0.2.0) is the
+ * letter (or "OPEN") the hand looks more like than the target, null when the target is the nearest.
+ */
+data class FrameVerdict(val pass: Boolean, val items: List<ItemResult>, val effective: Float = if (pass) 1f else 2f, val like: String? = null) {
     /** The item furthest out (ratio / threshold), null when all are in. */
     val worst: ItemResult?
         get() = items.filter { !it.inside }.maxByOrNull { it.ratio }
@@ -43,7 +46,15 @@ enum class Tint { JADE, CORAL }
  * - a still letter passes once it is held for [HOLD_MS] (well under 0.5 s);
  * - J, Z and the word signs compare the shape of the path only ([Trajectory]): not the speed, not how big, not the exact
  *   spot (word signs only need to start roughly in the right place, [PLACE_M]);
- * - two "almost" tries in a row loosen the target one step ([TIER_MUL], up to two steps); the hint says what is off.
+ * - two "almost" tries in a row loosen the target one step ([TIER_MUL]); the hint says what is off.
+ *
+ * v0.2.0 (polish M1, reviewers on v0.1.5: "错误的手势也能通过" / "我随便张手或者握拳，就过了"): forgiving for a right hand
+ * done sloppily, strict for a wrong hand:
+ * - rival check ([Rivals]): the hand must look more like the target than like any other letter or an open hand (letters
+ *   the tracker cannot tell apart, e.g. M / N / T, count as one); never loosened; the label then says "这更像 X";
+ * - the one forgiven finger is never a key finger (the one or two fingers that make the letter, e.g. D's index);
+ * - the thumb counts for every target ([THUMB_NEAR]), not only the fist letters;
+ * - loosening stops after one step; word signs need the handshape in 60 % of the frames.
  */
 object Tolerance {
     /** Template curl at or below this = the finger should be straight; at or above BENT_TARGET = bent; between = curved (C, X, K). */
@@ -70,16 +81,22 @@ object Tolerance {
     const val MOVE_STEP_MS = 100L
     /** Mean DTW distance (normalized path) that still counts as the same path. */
     const val MOVE_OK = 0.15f
-    /** The hand shape must be close in this share of the window's frames. */
-    const val SHAPE_SHARE = 0.5f
+    /** The hand shape must be close in this share of the window's frames (v0.2.0: 0.5 -> 0.6, rival check included). */
+    const val SHAPE_SHARE = 0.6f
     /** A move must be at least this share of the template's size (and >= MIN_MOVE_M). */
     const val MIN_MOVE_SHARE = 0.35f
     const val MIN_MOVE_M = 0.02f
     /** Word signs: the path's centre within this of the template's (metres). */
     const val PLACE_M = 0.2f
 
-    /** Tier factors: thresholds x 1.0, after two almost-tries x 1.3, after two more x 1.6. */
-    val TIER_MUL = floatArrayOf(1f, 1.3f, 1.6f)
+    /**
+     * Tier factors: thresholds x 1.0, after two almost-tries x 1.3. v0.2.0 (reviewers: "错误的手势也能通过"): one step
+     * only (x 1.6 accepted nearly any hand), and the rival check ([Rivals]) is never loosened.
+     */
+    val TIER_MUL = floatArrayOf(1f, 1.3f)
+
+    /** v0.2.0: every target's thumb tip within this of the template's (hand lengths; fist letters keep their band). */
+    const val THUMB_NEAR = 0.25f
     /** "Almost": the best effective ratio of a try is within this. */
     const val NEAR = 1.6f
     /** One try = this long with the hand in view. */
@@ -136,18 +153,24 @@ object CareMask {
         val shape = target.shape
         val t = HandMath.templateFeatures(shape.joints.getValue("ok"), shape.orient)
         val out = ArrayList<CareItem>()
+        val key = keyFingers(t.flex)
         for (i in 0 until 4) {
             val want = t.flex[i]
+            val ess = i in key
             out +=
                 when {
-                    want <= Tolerance.STRAIGHT_TARGET -> CareItem("f$i", ItemKind.FINGER, FINGERS[i], Tolerance.STRAIGHT_OK) { f -> f.flex[i] to Want.STRAIGHTER }
-                    want >= Tolerance.BENT_TARGET -> CareItem("f$i", ItemKind.FINGER, FINGERS[i], 180f - Tolerance.BENT_OK) { f -> max(0f, 180f - f.flex[i]) to Want.BENT }
+                    want <= Tolerance.STRAIGHT_TARGET -> CareItem("f$i", ItemKind.FINGER, FINGERS[i], Tolerance.STRAIGHT_OK, ess) { f -> f.flex[i] to Want.STRAIGHTER }
+                    want >= Tolerance.BENT_TARGET -> CareItem("f$i", ItemKind.FINGER, FINGERS[i], 180f - Tolerance.BENT_OK, ess) { f -> max(0f, 180f - f.flex[i]) to Want.BENT }
                     else -> CareItem("f$i", ItemKind.FINGER, FINGERS[i], Tolerance.CURVE_OK) { f -> abs(f.flex[i] - want) to if (f.flex[i] > want) Want.STRAIGHTER else Want.BENT }
                 }
         }
         if (target.sign == null && shape.l in FIST) {
             val (name, lo, hi) = thumbBand(shape.l)
             out += CareItem("t:$name", ItemKind.THUMB_POS, Finger.THUMB, Tolerance.THUMB_SLACK) { f -> max(0f, max(lo - f.thumbTip.x, f.thumbTip.x - hi)) to Want.NONE }
+        } else {
+            // v0.2.0: the thumb counts everywhere (an open hand is a B with the thumb out)
+            val tip = t.thumbTip
+            out += CareItem("t:pos", ItemKind.THUMB_POS, Finger.THUMB, Tolerance.THUMB_NEAR) { f -> (f.thumbTip - tip).length to Want.NONE }
         }
         // still letters only: a moving hand turns (J), and a word sign's palm faces every way along its path
         if (!target.moving) {
@@ -158,6 +181,20 @@ object CareMask {
     }
 
     fun items(letter: Letter): List<CareItem> = items(Target.of(letter))
+
+    /**
+     * v0.2.0: the key fingers of a template, never forgiven: the fingers in the minority state when one or two fingers
+     * differ from the rest (D's index, I's pinky, L's index, V's index and middle, Y's pinky).
+     */
+    fun keyFingers(flex: FloatArray): Set<Int> {
+        val straight = (0 until 4).filter { flex[it] <= Tolerance.STRAIGHT_TARGET }
+        val bent = (0 until 4).filter { flex[it] >= Tolerance.BENT_TARGET }
+        return when {
+            straight.size in 1..2 && bent.size >= 2 -> straight.toSet()
+            bent.size in 1..2 && straight.size >= 2 -> bent.toSet()
+            else -> emptySet()
+        }
+    }
 }
 
 /** One sample of the followed point (head frame, right-hand terms) and whether the hand shape was close then. */
@@ -168,7 +205,7 @@ private data class PathSample(val t: Long, val p: V3, val shapeOk: Boolean)
  * its band (fist letters) and at most one finger is off; the letter passes once it is held [Tolerance.HOLD_MS].
  * Moving targets: [push] with the followed point; the path of a recent window must match (see [Tolerance]).
  */
-class Judge(val target: Target) {
+class Judge(val target: Target, private val rivals: Rivals? = Rivals.current) {
     constructor(letter: Letter) : this(Target.of(letter))
 
     /** The letter whose pose is compared (for a sign: its handshape). */
@@ -228,12 +265,17 @@ class Judge(val target: Target) {
                 val (ratio, want) = item.ratio(f, m)
                 ItemResult(item, ratio, want, ratio <= 1f)
             }
-        val fingers = results.filter { it.item.kind == ItemKind.FINGER }.map { it.ratio }.sortedDescending()
+        val fingerResults = results.filter { it.item.kind == ItemKind.FINGER }
+        // v0.2.0: the forgiven finger is one of the others, never a key finger
+        val essEff = fingerResults.filter { it.item.essential }.maxOfOrNull { it.ratio } ?: 0f
+        val fingers = fingerResults.filter { !it.item.essential }.map { it.ratio }.sortedDescending()
         val forgiven = if (fingerItems >= 3) Tolerance.MISSES_ALLOWED else 0
-        val fingerEff = fingers.drop(forgiven).maxOrNull() ?: 0f
+        val fingerEff = max(essEff, fingers.drop(forgiven).maxOrNull() ?: 0f)
         val otherEff = results.filter { it.item.kind != ItemKind.FINGER }.maxOfOrNull { it.ratio } ?: 0f
-        val eff = max(fingerEff, otherEff)
-        val v = FrameVerdict(eff <= 1f, results, eff)
+        // v0.2.0: the rival check, never loosened
+        val rival = rivals?.check(target, f)
+        val eff = max(max(fingerEff, otherEff), rival?.ratio ?: 0f)
+        val v = FrameVerdict(eff <= 1f, results, eff, rival?.like)
         last = v
         return v
     }
@@ -390,5 +432,85 @@ class HintHolder {
                 ItemKind.PALM -> "palm:${letter.orientName}"
                 ItemKind.POINT -> "point"
             }
+    }
+}
+
+/**
+ * v0.2.0 (polish M1, reviewers: "我随便张手或者握拳，就过了"): the hand must look more like the target than like any other
+ * hand shape the app knows (the 26 letters and the open hand). Shapes the tracker cannot tell apart from the target
+ * (templates within [SAME] of it, M / N / T, and for moving targets the letters that differ only by the palm) form the
+ * target's group and never count as rivals. Distance = sum of finger curl differences / [FLEX], thumb tip distance /
+ * [THUMB], index-middle spread difference / [SPREAD] (when both are measured), palm angle / [PALM] (still targets only).
+ */
+class Rivals(book: LetterBook) {
+    private val shapes: List<Pair<String, Features>> =
+        book.letters.values.map { it.l to HandMath.templateFeatures(it.joints.getValue("ok"), it.orient) }
+
+    data class Result(val ratio: Float, val like: String?)
+
+    private val groups = HashMap<String, Set<String>>()
+
+    /** The target shape's group (the same shape for the tracker); [palm] = whether the palm tells shapes apart. */
+    @Synchronized
+    fun group(shape: String, palm: Boolean): Set<String> =
+        groups.getOrPut("$shape/$palm") {
+            val t = shapes.first { it.first == shape }.second
+            shapes.filter { (l, f) -> l == shape || distance(t, f, palm) < SAME || TRACKER_SAME.any { shape in it && l in it } }.map { it.first }.toSet()
+        }
+
+    /** ratio = distance to the target's group / distance to the nearest rival (<= 1: the target is the nearest). */
+    fun check(target: Target, f: Features): Result {
+        val palm = !target.moving
+        val grp = group(target.shape.l, palm)
+        var dTarget = Float.MAX_VALUE
+        var best = Float.MAX_VALUE
+        var like: String? = null
+        for ((l, s) in shapes) {
+            val d = distance(f, s, palm)
+            if (l in grp) {
+                if (d < dTarget) dTarget = d
+            } else if (d < best) {
+                best = d
+                like = l
+            }
+        }
+        if (like == null) return Result(0f, null)
+        val ratio = dTarget / best.coerceAtLeast(1e-3f)
+        return Result(ratio, if (ratio > 1f) like else null)
+    }
+
+    /** The nearest rivals of a shape's template (confusion table, tests). */
+    fun nearest(shape: String, palm: Boolean, n: Int): List<String> {
+        val t = shapes.first { it.first == shape }.second
+        val grp = group(shape, palm)
+        return shapes.filter { it.first !in grp }.sortedBy { distance(t, it.second, palm) }.take(n).map { it.first }
+    }
+
+    companion object {
+        /** Set when the letter book is parsed ([LetterBook.parse]); the judge uses it by default. */
+        @Volatile var current: Rivals? = null
+
+        const val FLEX = 40f
+        const val THUMB = 0.12f
+        const val SPREAD = 20f
+        const val PALM = 60f
+        const val SAME = 0.8f
+
+        /**
+         * Shapes the tracker cannot tell apart: the fist letters with the thumb under the fingers (v0.1.3 finding), and
+         * R (crossed fingers) / U (side by side), where the crossing hides one finger behind the other.
+         */
+        val TRACKER_SAME = listOf(setOf("M", "N", "T"), setOf("R", "U"))
+
+        fun distance(a: Features, b: Features, palm: Boolean): Float {
+            var d = 0f
+            for (i in 0 until 4) d += abs(a.flex[i] - b.flex[i]) / FLEX
+            d += (a.thumbTip - b.thumbTip).length / THUMB
+            val sa = a.spread[0]
+            val sb = b.spread[0]
+            if (!sa.isNaN() && !sb.isNaN()) d += abs(sa - sb) / SPREAD
+            if (palm) d += angleDeg(a.palmNormal, b.palmNormal) / PALM
+            return d
+        }
     }
 }

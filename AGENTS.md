@@ -1,8 +1,22 @@
 # 手语老师 Sign Hands — project notes for agents
 
-PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.1.7.
+PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.2.0.
 A translucent teacher's hand sits on your own hand and forms the 26 ASL letters; learned letters come back on a
 Leitner schedule. v0.1.3 adds 59 everyday ASL word signs in 9 themes.
+
+**v0.2.0 (polish M1; reviewers on v0.1.5: "错误的手势也能通过" / "我随便张手或者握拳，就过了")** — forgiving for a right
+hand done sloppily, strict for a wrong one (`domain/Matcher.kt`):
+- `Rivals`: every frame the hand is compared with all 26 letter templates and the open hand (finger curls, thumb tip,
+  index-middle spread, palm for still targets); it passes only if the target's group is the nearest. Groups = shapes the
+  tracker cannot tell apart (M / N / T, R / U, and templates within `SAME` of the target, e.g. G / Q, I / J). Never
+  loosened. `FrameVerdict.like` names the look-alike; when every item is in, the label says "这更像 X" (`like:<X>`).
+- Key fingers (`CareMask.keyFingers`: the one or two fingers in the minority state, D's index, I's pinky ...) are never
+  the forgiven finger. The thumb counts for every target (`t:pos`, within `THUMB_NEAR` = 0.25 hand lengths; the fist
+  letters keep their bands). Loosening stops after one step (x1.3). Word signs need the handshape in 60 % of the frames.
+- Gate `WrongHandRecordingsTest`: open hand, fists A / S and the two nearest look-alikes, done with 3 mm noise for 6 s
+  (loosening allowed) on all 26 letters and 59 words: 0 / 1915 pass; table `app/build/wrong-hand/confusion.md`. The
+  sloppy gate still passes; first-try rates at 3 mm >= 0.98. At a harsh 6 mm only V drops (0.30, V vs U is spread only).
+  `Performer.joints(..., wrongShape = )` does a target with another shape.
 
 **v0.1.7 (user on the headset with v0.1.6: the circle and bar under a word demo "是啥意思，应该用原生的 bar 组件" /
 "这哪一看就是人啊，你这也太抽象了，去掉吧")**

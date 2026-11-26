@@ -100,6 +100,7 @@ class LetterBook(val letters: Map<String, Letter>, val lessons: List<LessonDef>,
                     )
             }
             return LetterBook(letters, lessons, root.getDouble("clipSegment").toFloat(), root.getDouble("morphSec").toFloat(), root.getDouble("modelHandLength").toFloat())
+                .also { Rivals.current = Rivals(it) }
         }
     }
 }
