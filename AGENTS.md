@@ -1,8 +1,19 @@
 # 手语老师 Sign Hands — project notes for agents
 
-PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.4.0.
+PICO OS 6 spatial app (Spatial SDK 6.1.9, Kotlin/Compose + ECS). Package `io.embodit.signhands`, v0.5.0.
 A translucent teacher's hand sits on your own hand and forms the 26 ASL letters; learned letters come back on a
 Leitner schedule. v0.1.3 adds 59 everyday ASL word signs in 9 themes.
+
+**v0.5.0 (polish M4: ~200 signs)**
+- `domain/SignsM4.kt`: 126 more signs in 12 more themes (numbers 11-100, colours, animals, places, school, work, weather,
+  body & health, shopping, people, days, more verbs); `Signs.all` = 200 signs in 22 themes, each theme 4..12 (one
+  page, `WordsTest`). Written from general beginner-ASL knowledge, simplified to one hand path; a Deaf / ASL-fluent
+  review is still due.
+- Words page: the theme name ("问候 ▾") opens a 4 x 6 theme picker with learned / total per theme; ‹ › still page.
+  Word and alphabet cells are `NoFocus` too.
+- `Rivals.group` is a closure now (a shape the tracker cannot tell from any member joins): without the palm H = U and
+  U ~ R, so H no longer passes as RESTAURANT (R). Wrong-hand gate 0 / 5215 over all 200 signs + 26 letters.
+- Words are not in the Leitner review / quiz yet (planned in the roadmap, not done).
 
 **v0.4.0 (polish M3: handshape framework + samples)**
 - `tools/bake_hands.py` `EXTRA`: handshapes beyond A-Z appended after Z (clip segments 27..): 3, 4, 7, 8, ILY, CLAW, FLATO,

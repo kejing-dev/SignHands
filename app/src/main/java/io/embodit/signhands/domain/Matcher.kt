@@ -456,8 +456,22 @@ class Rivals(book: LetterBook) {
     @Synchronized
     fun group(shape: String, palm: Boolean): Set<String> =
         groups.getOrPut("$shape/$palm") {
-            val t = shapes.first { it.first == shape }.second
-            shapes.filter { (l, f) -> l == shape || distance(t, f, palm) < SAME || TRACKER_SAME.any { shape in it && l in it } }.map { it.first }.toSet()
+            // closure: a shape the tracker cannot tell from any member is a member too (without the palm H = U, U ~ R)
+            val members = LinkedHashSet<String>()
+            members += shape
+            var grew = true
+            while (grew) {
+                grew = false
+                for ((l, f) in shapes) {
+                    if (l in members) continue
+                    val same = members.any { m -> distance(shapes.first { it.first == m }.second, f, palm) < SAME || TRACKER_SAME.any { m in it && l in it } }
+                    if (same) {
+                        members += l
+                        grew = true
+                    }
+                }
+            }
+            members
         }
 
     /** ratio = distance to the target's group / distance to the nearest rival (<= 1: the target is the nearest). */

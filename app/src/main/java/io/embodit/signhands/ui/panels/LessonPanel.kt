@@ -1,6 +1,8 @@
 package io.embodit.signhands.ui.panels
 
 import androidx.compose.foundation.background
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -570,7 +572,7 @@ private fun Alphabet(state: UiState, vm: SignViewModel, c: Copy, book: LetterBoo
                         val dots = Srs.dots(state.progress.record(l))
                         Button(
                             onClick = { vm.openLetter(l) },
-                            modifier = Modifier.weight(1f).height(52.dp),
+                            modifier = Modifier.weight(1f).height(52.dp).then(NoFocus),
                             colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary),
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -603,11 +605,17 @@ private fun WordsPage(state: UiState, vm: SignViewModel, c: Copy) {
     val themes = Theme.entries
     val i = themes.indexOf(state.theme)
     val words = Signs.inTheme(state.theme)
+    // v0.5.0 (M4): 21 themes - the theme name opens a picker instead of paging through them one by one
+    var picking by remember { mutableStateOf(false) }
+    if (picking) {
+        ThemePicker(state, vm, c) { picking = false }
+        return
+    }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             RoundIcon(R.drawable.ic_back, c.back) { vm.setTheme(themes[(i - 1 + themes.size) % themes.size]) }
-            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (c.en) state.theme.en else state.theme.zh, style = PicoTheme.typography.titleMedium, maxLines = 1)
+            Column(modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).then(NoFocus).clickable { picking = true }, horizontalAlignment = Alignment.CenterHorizontally) {
+                Text((if (c.en) state.theme.en else state.theme.zh) + "  ▾", style = PicoTheme.typography.titleMedium, maxLines = 1)
                 val learned = words.count { it.key in state.progress.followed }
                 Text("${i + 1} / ${themes.size} · ${c.learnedOf(learned, words.size)}", style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelSecondary, maxLines = 1)
                 // v0.3.0: the theme's progress bar
@@ -623,7 +631,7 @@ private fun WordsPage(state: UiState, vm: SignViewModel, c: Copy) {
                     val done = w.key in state.progress.followed
                     Button(
                         onClick = { vm.openSign(w.id) },
-                        modifier = Modifier.weight(1f).height(52.dp),
+                        modifier = Modifier.weight(1f).height(52.dp).then(NoFocus),
                         contentPadding = PaddingValues(horizontal = 6.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary),
                     ) {
@@ -639,6 +647,40 @@ private fun WordsPage(state: UiState, vm: SignViewModel, c: Copy) {
         if (words.size <= 6) {
             Spacer(modifier = Modifier.weight(1f))
             Small(c.wordsNote)
+        }
+    }
+}
+
+/** v0.5.0: all themes at once (4 x 6 grid), each with learned / total; tapping one opens it. */
+@Composable
+private fun ThemePicker(state: UiState, vm: SignViewModel, c: Copy, close: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(modifier = Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            RoundIcon(R.drawable.ic_back, c.back) { close() }
+            Text(c.pickTheme, style = PicoTheme.typography.titleMedium, maxLines = 1)
+        }
+        for (row in Theme.entries.chunked(4)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                for (th in row) {
+                    val ws = Signs.inTheme(th)
+                    val learned = ws.count { it.key in state.progress.followed }
+                    val colors =
+                        if (th == state.theme) ButtonDefaults.buttonColors(containerColor = SignColors.Selected, contentColor = SignColors.OnSelected)
+                        else ButtonDefaults.buttonColors(containerColor = SignColors.ButtonSecondary, contentColor = SignColors.OnButtonSecondary)
+                    Button(
+                        onClick = {
+                            vm.setTheme(th)
+                            close()
+                        },
+                        modifier = Modifier.weight(1f).height(40.dp).then(NoFocus),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        colors = colors,
+                    ) {
+                        FitText((if (c.en) th.en else th.zh) + " ${learned}/${ws.size}", PicoTheme.typography.labelMedium, if (th == state.theme) SignColors.OnSelected else SignColors.OnButtonSecondary, id = "lesson/themes/${th.name}", align = TextAlign.Center)
+                    }
+                }
+                repeat(4 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+            }
         }
     }
 }

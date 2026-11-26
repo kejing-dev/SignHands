@@ -22,6 +22,19 @@ enum class Theme(val zh: String, val en: String) {
     QUESTION("问句", "Questions"),
     /** v0.4.0 (polish M3): numbers 0-10, the first theme with the new handshapes (3, 4, 7, 8). */
     NUMBERS("数字", "Numbers"),
+    // v0.5.0 (polish M4): the batch to ~200 signs, [SignsM4]
+    NUMBERS2("数字 11–100", "Numbers 11–100"),
+    COLORS("颜色", "Colours"),
+    ANIMALS("动物", "Animals"),
+    PLACES("地点", "Places"),
+    SCHOOL("学校", "School"),
+    WORK("工作", "Work"),
+    WEATHER("天气", "Weather"),
+    BODY("身体 / 健康", "Body & health"),
+    SHOPPING("购物", "Shopping"),
+    PEOPLE("人", "People"),
+    DAYS("星期", "Days"),
+    ACTIONS("更多动词", "More verbs"),
 }
 
 /** The non-dominant hand of a two-handed sign: a resting shape at a spot (head frame, right-hand terms, mirrored). */
@@ -284,7 +297,7 @@ object Signs {
                 "拇指碰食指尖，其余三指竖起（像 F）", "Thumb touches your index tip, the others up (like F)"),
             Sign("TEN", "十", Theme.NUMBERS, "A", Pose.SIDE, Pose.SPACE + v(0f, 0.12f, 0f), shake(0.03f),
                 "握拳拇指朝上，手腕左右摇两下", "Fist with the thumb up, twist your wrist twice"),
-        )
+        ) + SignsM4.all
 
     val byId: Map<String, Sign> = all.associateBy { it.id }
 

@@ -58,6 +58,7 @@ class Copy(val lang: Lang) {
     val fingerShort: List<String> get() = if (en) listOf("Th", "In", "Mi", "Ri", "Pi", "Pa") else listOf("拇", "食", "中", "无", "小", "掌")
     fun combo(n: Int) = t("连续做对 $n 个", "$n right in a row")
     fun learnedOf(k: Int, n: Int) = t("已学 $k / $n", "Learned $k / $n")
+    val pickTheme get() = t("选一个主题", "Pick a theme")
     fun lesson(n: Int) = t("第 $n 课", "Lesson $n")
     val spellWords get() = t("拼词", "Spell words")
     val alphabet get() = t("字母表", "Alphabet")

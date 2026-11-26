@@ -15,7 +15,9 @@ class WordsTest {
     fun atLeastFiftyEverydayWordsInEveryTheme() {
         assertTrue("${Signs.all.size} words", Signs.all.size >= 50)
         assertEquals(Signs.all.size, Signs.all.map { it.id }.toSet().size)
-        for (t in Theme.entries) assertTrue("$t has ${Signs.inTheme(t).size}", Signs.inTheme(t).size >= 4)
+        // v0.5.0: one page per theme (4 rows of 3), ~200 signs in all
+        for (t in Theme.entries) assertTrue("$t has ${Signs.inTheme(t).size}", Signs.inTheme(t).size in 4..12)
+        assertTrue("${Signs.all.size} signs", Signs.all.size >= 190)
         for (s in Signs.all) {
             assertTrue("${s.id} shape ${s.shape}", book.letters.containsKey(s.shape))
             s.base?.let { assertTrue("${s.id} base ${it.shape}", book.letters.containsKey(it.shape)) }
