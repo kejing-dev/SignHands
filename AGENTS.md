@@ -251,3 +251,7 @@ Emulator: set Graphics to High Definition first; take each shot twice (emu conso
 Overlay visibility in the three upper-limb modes, real recognition rates and the judging list, follow latency /
 jitter (One-Euro), pinch false triggers, label smoothness, A vs S thumb. The first build is the 5-minute minimal
 version (design B16): the user learns lesson 1 and says whether the teacher's hand is readable.
+
+## v0.5.1 (polish, user on device)
+- The in-practice hand label (hint / right / tip) no longer sits beside the wrist (it was pushed out past the window and often left the view). `LabelPlacement`: straight ahead of the head's heading, 0.6 m, 18° under the eye line, re-centres only past a 20° turn (heading only, no pitch).
+- The live hint is also on the panel (Follow page, coral, under the finger chips).

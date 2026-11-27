@@ -27,6 +27,7 @@ import io.embodit.signhands.domain.HandFrame
 import io.embodit.signhands.domain.HandMath
 import io.embodit.signhands.domain.Handed
 import io.embodit.signhands.domain.HintHolder
+import io.embodit.signhands.domain.LabelPlacement
 import io.embodit.signhands.domain.ItemKind
 import io.embodit.signhands.domain.J
 import io.embodit.signhands.domain.Judge
@@ -184,6 +185,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
     private var labelFrom = V3.ZERO
     private var labelTo = V3.ZERO
     private var labelT = 1f
+    private var labelYaw: Float? = null
     private var breath = 0f
 
     // ------------------------------------------------------------------------------------------ setup
@@ -882,22 +884,26 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
         settleStation(headPos, pose.yaw)
         placeChip(pose, headPos, now)
 
-        // hand label: beside the wrist (non-dominant side 0.12 m, up 0.08 m), moves only when 8 cm off
+        // v0.5.1: the label stands front-centre under the eye line and follows the heading lazily (it used to sit
+        // beside the wrist and get pushed out past the window, often out of view)
         val labelShown = s.screen in LABEL_SCREENS || s.wordDone != null
         val slot = slots[PanelIds.LABEL] ?: return
         if (!labelShown) {
             slot.hide()
             labelPos = null
+            labelYaw = null
             return
         }
-        val wrist = joints?.get(J.WRIST) ?: practice.toSpace(Layout.sided(Layout.TEACHING_SPOT, handed))
-        val anchor = wrist + practice.toSpaceDir(Layout.sided(V3(-Layout.LABEL_SIDE, Layout.LABEL_UP, 0f), handed))
+        val yaw = LabelPlacement.follow(labelYaw, pose.yaw)
+        val moved = yaw != labelYaw
+        labelYaw = yaw
+        val anchor = LabelPlacement.spot(headPos, yaw)
         val cur = labelPos
         if (cur == null) {
             labelPos = anchor
             labelTo = anchor
             labelT = 1f
-        } else if (labelT >= 1f && (anchor - cur).length > Layout.LABEL_MOVE_AT) {
+        } else if (labelT >= 1f && (moved || (anchor - cur).length > Layout.LABEL_MOVE_AT)) {
             labelFrom = cur
             labelTo = anchor
             labelT = 0f
@@ -906,8 +912,7 @@ class SignScene(private val vm: SignViewModel, private val head: HeadTracker, pr
             labelT = (labelT + dt / LABEL_MOVE_SEC).coerceAtMost(1f)
             labelPos = labelFrom + (labelTo - labelFrom) * smoothstep(labelT)
         }
-        // v0.1.4 (D8): never in front of or behind the window; v0.1.5: nor its control strip (out past its side or above it)
-        val lp = MainWindowLayout.clearOf(headPos, window, labelPos!!, LABEL_R, handed)
+        val lp = labelPos!!
         slot.place(lp, faceHead(lp, headPos))
     }
 

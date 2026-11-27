@@ -436,6 +436,9 @@ private fun Follow(state: UiState, vm: SignViewModel, c: Copy, book: LetterBook)
         }
         // v0.3.0: which finger is off, live (thumb .. pinky, palm); the combo once two in a row are right
         if (state.screen == Screen.S06) FingerChips(state.fingers, c)
+        // v0.5.1: the live hint on the panel too, so it is readable even when the hand label is out of view
+        val hint = if (state.screen == Screen.S06) c.hint(state.hint) else null
+        if (hint != null) Text(hint, style = PicoTheme.typography.titleMedium, color = SignColors.Coral, maxLines = 2)
         if (state.combo >= 2) Text(c.combo(state.combo), style = PicoTheme.typography.titleMedium, color = SignColors.Jade, maxLines = 1)
         Spacer(modifier = Modifier.weight(1f))
         ButtonsRow {
