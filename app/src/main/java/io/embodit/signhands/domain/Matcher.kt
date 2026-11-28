@@ -81,6 +81,13 @@ object Tolerance {
     const val MOVE_STEP_MS = 100L
     /** Mean DTW distance (normalized path) that still counts as the same path. */
     const val MOVE_OK = 0.15f
+    /** v0.5.2: with every care item in, the rival must be this much nearer than the target to block (see [Judge.frame]). */
+    const val RIVAL_SLACK = 1.3f
+    /** v0.5.2: the slack is for well-separated pairs only (Rivals.distance between templates; E / O = 4.65, B / 4 = 1.40). */
+    const val RIVAL_WIDE_GAP = 3.0f
+    /** v0.5.2: right after a passing frame, a frame still passes up to this effective ratio (hysteresis). */
+    const val HOLD_STICK = 1.15f
+
     /** The hand shape must be close in this share of the window's frames (v0.2.0: 0.5 -> 0.6, rival check included). */
     const val SHAPE_SHARE = 0.6f
     /** A move must be at least this share of the template's size (and >= MIN_MOVE_M). */
@@ -274,10 +281,20 @@ class Judge(val target: Target, private val rivals: Rivals? = Rivals.current) {
         val forgiven = if (fingerItems >= 3) Tolerance.MISSES_ALLOWED else 0
         val fingerEff = max(essEff, fingers.drop(forgiven).maxOrNull() ?: 0f)
         val otherEff = results.filter { it.item.kind != ItemKind.FINGER }.maxOfOrNull { it.ratio } ?: 0f
-        // v0.2.0: the rival check, never loosened
+        // v0.2.0: the rival check, never loosened by tiers. v0.5.2 (user on device: E all green yet not passing): once
+        // every care item is in, the hand already meets the target's own bar; a rival then blocks only when the hand is
+        // clearly nearer it ([Tolerance.RIVAL_SLACK]), not when it sits between two templates that are far apart. Close
+        // pairs (gap < [Tolerance.RIVAL_WIDE_GAP]: 4 / B, R / U / V, the fists S / N / M / T / A) keep the strict check.
         val rival = rivals?.check(target, f)
-        val eff = max(max(fingerEff, otherEff), rival?.ratio ?: 0f)
-        val v = FrameVerdict(eff <= 1f, results, eff, rival?.like)
+        val itemsEff = max(fingerEff, otherEff)
+        val slack = if (itemsEff <= 1f && rival != null && rival.gap >= Tolerance.RIVAL_WIDE_GAP) Tolerance.RIVAL_SLACK else 1f
+        val rivalEff = (rival?.ratio ?: 0f) / slack
+        val eff = max(itemsEff, rivalEff)
+        // v0.5.2: a little hysteresis: right after a passing frame the edge is [Tolerance.HOLD_STICK], so tracker
+        // flicker right at the edge does not keep breaking the hold (the hand already got there once); the care items
+        // only, the rival check stays strict (sticky rivals let V pass as R)
+        val edge = if (last?.pass == true) Tolerance.HOLD_STICK else 1f
+        val v = FrameVerdict(itemsEff <= edge && rivalEff <= 1f, results, eff, rival?.like?.takeIf { rivalEff > 1f })
         last = v
         return v
     }
@@ -448,7 +465,8 @@ class Rivals(book: LetterBook) {
     private val shapes: List<Pair<String, Features>> =
         book.letters.values.map { it.l to HandMath.templateFeatures(it.joints.getValue("ok"), it.orient) }
 
-    data class Result(val ratio: Float, val like: String?)
+    /** [gap]: template distance between the target's group and the nearest rival (how far apart the two shapes are). */
+    data class Result(val ratio: Float, val like: String?, val gap: Float = 0f)
 
     private val groups = HashMap<String, Set<String>>()
 
@@ -493,8 +511,17 @@ class Rivals(book: LetterBook) {
         }
         if (like == null) return Result(0f, null)
         val ratio = dTarget / best.coerceAtLeast(1e-3f)
-        return Result(ratio, if (ratio > 1f) like else null)
+        return Result(ratio, if (ratio > 1f) like else null, gap(target.shape.l, like, palm))
     }
+
+    private val gaps = HashMap<String, Float>()
+
+    @Synchronized
+    fun gap(shape: String, rival: String, palm: Boolean): Float =
+        gaps.getOrPut("$shape/$rival/$palm") {
+            val r = shapes.first { it.first == rival }.second
+            group(shape, palm).minOf { m -> distance(shapes.first { it.first == m }.second, r, palm) }
+        }
 
     /** The nearest rivals of a shape's template (confusion table, tests). */
     fun nearest(shape: String, palm: Boolean, n: Int): List<String> {

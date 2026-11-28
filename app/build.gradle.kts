@@ -12,8 +12,8 @@ android {
         applicationId = "io.embodit.signhands"
         minSdk = 35
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.5.1"
+        versionCode = 14
+        versionName = "0.5.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters.add("arm64-v8a") }

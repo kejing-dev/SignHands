@@ -255,3 +255,8 @@ version (design B16): the user learns lesson 1 and says whether the teacher's ha
 ## v0.5.1 (polish, user on device)
 - The in-practice hand label (hint / right / tip) no longer sits beside the wrist (it was pushed out past the window and often left the view). `LabelPlacement`: straight ahead of the head's heading, 0.6 m, 18° under the eye line, re-centres only past a 20° turn (heading only, no pitch).
 - The live hint is also on the panel (Follow page, coral, under the finger chips).
+
+## v0.5.2 (polish, user on device: "E 五个都绿灯了还是不过，要调整很久")
+- Rival slack: once every care item is in, a rival blocks only when the hand is 1.3x nearer it (`Tolerance.RIVAL_SLACK`), and only for well-separated pairs (template gap >= `RIVAL_WIDE_GAP` 3.0: E / O 4.65). Close pairs (4 / B, R / U / V, S / N / M / T / A) keep the strict check; a flat slack let 4 pass as B and V as U.
+- Hold hysteresis on the care items only (`HOLD_STICK` 1.15 right after a passing frame); a sticky rival let V pass as R.
+- `HandProportionsTest`: synthetic people (each finger / thumb 0.85..1.15 long, curl x0.85..1.15, per-frame curl flicker) must pass the right still letter first try >= 80 %. Wrong-hand gate still 0 / 5215.
